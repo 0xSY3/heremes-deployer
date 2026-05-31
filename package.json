@@ -1,0 +1,12 @@
+{
+  "name": "hermes-deployer",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm --filter @hermes/web dev",
+    "provision": "pnpm --filter @hermes/provisioner provision",
+    "teardown": "pnpm --filter @hermes/provisioner teardown"
+  }
+}
