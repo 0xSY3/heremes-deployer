@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/* Hermes — "terminal meets temple": deep ink, warm gold, classical serif
+   display paired with a technical mono. Distinctive, not generic SaaS.
+   Fonts loaded via <link> in layout.tsx (CSS @import after Tailwind is invalid). */
+
+:root {
+  --ink: #0e0f13;
+  --ink-2: #15171d;
+  --panel: #181b22;
+  --panel-edge: #262a33;
+  --parchment: #ece4d4;
+  --muted: #8b8a83;
+  --gold: #e0a955;
+  --gold-dim: #b9863f;
+  --green: #6fcf8e;
+  --amber: #e0a955;
+  --red: #e0736a;
+
+  --background: var(--ink);
+  --foreground: var(--parchment);
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-panel: var(--panel);
+  --color-panel-edge: var(--panel-edge);
+  --color-parchment: var(--parchment);
+  --color-muted: var(--muted);
+  --color-gold: var(--gold);
+  --color-gold-dim: var(--gold-dim);
+  --color-green: var(--green);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-display: "Fraunces", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--ink);
+  color: var(--parchment);
+  font-family: var(--font-mono);
+  /* Subtle gold vignette + film grain for atmosphere, not a flat fill. */
+  background-image:
+    radial-gradient(1200px 600px at 80% -10%, rgba(224, 169, 85, 0.08), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(224, 169, 85, 0.05), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Film-grain overlay for depth. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.font-display { font-family: var(--font-display); }
+
+/* Staggered page-load reveal. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Soft pulse for a provisioning agent. */
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.breathe { animation: breathe 1.6s ease-in-out infinite; }
+
+/* Running-status glow. */
+.glow-green { box-shadow: 0 0 0 1px rgba(111, 207, 142, 0.25), 0 0 24px -6px rgba(111, 207, 142, 0.4); }
