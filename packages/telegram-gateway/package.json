@@ -1,0 +1,34 @@
+{
+  "name": "@hermes/telegram-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./connect": "./src/connect.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gateway": "tsx bin/gateway.ts",
+    "set-webhook": "tsx bin/set-webhook.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1060.0",
+    "@hermes/provisioner": "workspace:*",
+    "@supabase/supabase-js": "^2.107.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
