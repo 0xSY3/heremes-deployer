@@ -51,8 +51,142 @@ export function buildHello(agentId: string, status: string): DeployFrame {
   return { type: "hello", agentId, status };
 }
 
-// Placeholder kept so bin/main.ts keeps compiling between this commit and the
-// next; the real token-gated server (Task 88) replaces this whole block.
-export function startWsServer(): Promise<null> {
-  return Promise.resolve(null);
+function send(ws: WebSocket, frame: DeployFrame): void {
+  if (ws.readyState !== ws.OPEN) return;
+  ws.send(JSON.stringify(frame));
+}
+
+function isTerminal(status: string): status is (typeof TERMINAL_STATUSES)[number] {
+  return (TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+async function handleSession(ws: WebSocket, agentId: string, token: string): Promise<void> {
+  const verdict = verifyToken(token, agentId);
+  if (!verdict.ok) {
+    // 4401 = unauthorized (private use range). Never echo the reason to the
+    // client — it would let an attacker distinguish expiry from forgery.
+    ws.close(4401, "unauthorized");
+    return;
+  }
+
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { userId: true, status: true },
+  });
+  if (!agent) {
+    ws.close(4404, "not_found");
+    return;
+  }
+  // Tenancy: the token user must own the row (spec §3 — every :id is owner-checked).
+  if (agent.userId !== verdict.userId) {
+    ws.close(4403, "forbidden");
+    return;
+  }
+
+  // DB is source of truth: hello carries the persisted status so a reconnect
+  // lands on the real current step even if the in-memory ring was cleared.
+  send(ws, buildHello(agentId, agent.status));
+
+  // Replay the steps emitted before this socket attached.
+  for (const frame of snapshotSteps(agentId)) send(ws, frame);
+
+  // If we reconnected after the deploy already finished, close it out now —
+  // no live frames will ever arrive for a terminal agent.
+  if (isTerminal(agent.status)) {
+    send(ws, { type: "done", status: agent.status });
+    ws.close(1000, "done");
+    return;
+  }
+
+  const unsubscribe = subscribe(agentId, (frame) => {
+    send(ws, frame);
+    if (frame.type === "done") {
+      try {
+        ws.close(1000, "done");
+      } catch {
+        // Already closing — nothing to do.
+      }
+    }
+  });
+
+  // ws keepalive: terminate a peer that misses a pong (dead TCP, sleeping tab).
+  let alive = true;
+  const pingHandle = setInterval(() => {
+    if (!alive) {
+      ws.terminate();
+      return;
+    }
+    alive = false;
+    try {
+      ws.ping();
+    } catch {
+      // Socket gone between the readyState check and ping — the close handler cleans up.
+    }
+  }, PING_MS);
+  ws.on("pong", () => {
+    alive = true;
+  });
+
+  ws.on("close", () => {
+    clearInterval(pingHandle);
+    unsubscribe();
+  });
+}
+
+export interface WsHandle {
+  address(): ReturnType<import("node:net").Server["address"]>;
+  close(): void;
+}
+
+export function startWsServer(): Promise<WsHandle | null> {
+  const port = config.wsPort;
+  if (!port || port <= 0) {
+    console.log("[ws] disabled (DEPLOYER_WS_PORT<=0)");
+    return Promise.resolve(null);
+  }
+
+  const httpServer = createServer((_req, res) => {
+    res.writeHead(426, { "Content-Type": "text/plain" });
+    res.end(
+      "Upgrade required: connect with ws(s)://<host>/v1/agents/<agentId>/deploy?token=<t>\n",
+    );
+  });
+
+  const wss = new WebSocketServer({ noServer: true });
+
+  httpServer.on("upgrade", (req: IncomingMessage, socket, head) => {
+    const parsed = parseDeployPath(req.url);
+    if (!parsed) {
+      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      handleSession(ws, parsed.agentId, parsed.token).catch((err) => {
+        // Never surface internals to the client; an Agent row lookup can fail.
+        console.error(`[ws] session ${parsed.agentId} failed:`, err);
+        try {
+          send(ws, { type: "error", code: "internal", message: "internal error" });
+          ws.close(1011, "internal");
+        } catch {
+          // Socket already gone.
+        }
+      });
+    });
+  });
+
+  return new Promise((resolve) => {
+    httpServer.listen(port, () => {
+      const addr = httpServer.address();
+      const shown = typeof addr === "object" && addr ? addr.port : port;
+      console.log(`[ws] listening on :${shown} (path /v1/agents/<agentId>/deploy)`);
+      resolve({
+        address: () => httpServer.address(),
+        close: () => {
+          wss.close();
+          httpServer.close();
+        },
+      });
+    });
+  });
 }
