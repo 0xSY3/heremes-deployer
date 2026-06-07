@@ -139,7 +139,7 @@ export async function main(): Promise<void> {
   startRetentionLoop();
   startMetricsLoop();
   startHealthLoop();
-  startWsServer();
+  startWsServer().catch((e) => console.error("[worker] ws server failed to start:", e));
 
   const shutdown = () => {
     console.log("[worker] shutting down");
