@@ -98,6 +98,10 @@ export const config = {
   // connect to ws://<host>:<port>/v1/agents/<agentId>/deploy?token=<owner token>.
   wsPort: numberEnv("DEPLOYER_WS_PORT", 7071),
 
+  // HMAC secret for the short-lived deploy-WS owner tokens (spec §5). Empty
+  // disables WS auth (verifyToken fails closed) — set it in prod via env.
+  wsSecret: optional("DEPLOYER_WS_SECRET", ""),
+
   // Default LLM model injected as HERMES_MODEL. Works with any OpenRouter key
   // out of the box, unlike the image default (minimax) which 404s without a
   // data-policy toggle. A personality preset may override it.
