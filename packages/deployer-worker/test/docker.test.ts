@@ -162,7 +162,12 @@ test("runContainer builds the Hermes createContainer arg object (no binds, two l
   expect(hostConfig.Memory).toBe(1536 * 1024 * 1024);
   expect(hostConfig.NanoCpus).toBe(1000 * 1_000_000);
   expect(hostConfig.ReadonlyRootfs).toBe(true);
-  expect(hostConfig.Tmpfs).toEqual({ "/tmp": "rw,exec,size=512m" });
+  // Both /tmp (gateway scratch) and /run (s6-overlay init needs it writable) —
+  // a read-only rootfs without /run kills the image's init with exit 111.
+  expect(hostConfig.Tmpfs).toEqual({
+    "/tmp": "rw,exec,size=512m",
+    "/run": "rw,exec,size=512m",
+  });
   expect(hostConfig.SecurityOpt).toEqual(["no-new-privileges"]);
   expect(hostConfig.Binds).toBeUndefined();
 });

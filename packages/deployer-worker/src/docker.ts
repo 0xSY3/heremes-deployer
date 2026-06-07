@@ -172,9 +172,15 @@ export async function runContainer(opts: RunContainerOpts): Promise<string> {
       Memory: config.containerMemoryMb * 1024 * 1024,
       NanoCpus: config.containerCpuMillis * 1_000_000,
       ReadonlyRootfs: true,
-      // Read-only rootfs needs a writable /tmp for the gateway's scratch.
-      // exec is allowed; size counts against the container memory limit.
-      Tmpfs: { "/tmp": `rw,exec,size=${config.containerTmpfsMb}m` },
+      // Read-only rootfs needs writable tmpfs mounts. /tmp is the gateway's
+      // scratch. /run is required by the image's s6-overlay init, which writes
+      // its supervision tree there at startup — without it s6 dies with
+      // "unable to remove /run/s6: Read-only file system" (exit 111) before the
+      // gateway ever boots. exec allowed on /tmp; size counts against the limit.
+      Tmpfs: {
+        "/tmp": `rw,exec,size=${config.containerTmpfsMb}m`,
+        "/run": `rw,exec,size=${config.containerTmpfsMb}m`,
+      },
       // Block privilege escalation (setuid binaries can't gain capabilities).
       SecurityOpt: ["no-new-privileges"],
     },
