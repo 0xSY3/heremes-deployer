@@ -51,10 +51,11 @@ const ACTIVE_STATUSES: ReadonlyArray<string> = [
   "unhealthy",
 ];
 
-function buildHostUrl(slug: string): string {
-  // Local-dev escape hatch: no Caddy means no reverse proxy, so there is
-  // no public dashboard URL to advertise.
-  if (config.skipCaddy) return `http://localhost/${slug}`;
+function buildHostUrl(slug: string, dashboardPort: number): string {
+  // Local-dev escape hatch: no Caddy means no reverse proxy on /<slug>, so the
+  // only reachable address is the container's published dashboard port. Hand
+  // that out so the "Open dashboard" link actually works locally.
+  if (config.skipCaddy) return `http://localhost:${dashboardPort}`;
   return `https://${config.wildcardDomain}/${slug}`;
 }
 
@@ -200,7 +201,7 @@ export async function drive(agentId: string): Promise<void> {
     emitStep(agentId, "registering_route", "ok");
 
     // --- 5. running --------------------------------------------------
-    const hostUrl = buildHostUrl(agent.slug);
+    const hostUrl = buildHostUrl(agent.slug, dashboardPort);
     await prisma.agent.update({
       where: { id: agentId },
       data: { status: "running", hostUrl },
