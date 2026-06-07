@@ -52,9 +52,34 @@ export function Dashboard({
     };
   }, []);
 
-  function onCreated(agent: AgentView) {
-    setAgents((prev) => [agent, ...prev.filter((a) => a.tenantId !== agent.tenantId)]);
-    setModalOpen(false);
+  // The modal hands off to the live deploy view and signals completion with no
+  // payload, so refresh the list from the API. GET /api/agents returns the
+  // Prisma shape ({id, slug, hostUrl, ...}); map it to the AgentView the cards
+  // render (id→tenantId, hostUrl→url) so page.tsx/AgentCard stay unchanged.
+  async function refreshAgents() {
+    const res = await fetch("/api/agents");
+    if (!res.ok) return;
+    const { agents: rows } = (await res.json()) as {
+      agents: Array<{
+        id: string;
+        name: string;
+        status: string;
+        hostUrl: string | null;
+        personalityId: string | null;
+        createdAt: string;
+      }>;
+    };
+    setAgents(
+      rows.map((a) => ({
+        tenantId: a.id,
+        name: a.name,
+        url: a.hostUrl ?? "",
+        status: a.status,
+        channel: "web",
+        ...(a.personalityId ? { personalityId: a.personalityId } : {}),
+        createdAt: a.createdAt,
+      })),
+    );
   }
 
   function onAgentUpdate(updated: AgentView) {
@@ -131,7 +156,15 @@ export function Dashboard({
         </div>
       )}
 
-      {modalOpen && <CreateAgentModal onClose={() => setModalOpen(false)} onCreated={onCreated} />}
+      {modalOpen && (
+        <CreateAgentModal
+          onClose={() => setModalOpen(false)}
+          onFinished={() => {
+            setModalOpen(false);
+            void refreshAgents();
+          }}
+        />
+      )}
     </main>
   );
 }
