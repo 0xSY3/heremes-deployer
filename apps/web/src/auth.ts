@@ -11,7 +11,8 @@ declare module "next-auth" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Reads AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET from env automatically.
+  // Trust Vercel's proxy host header so callback URLs use the real domain, not localhost.
+  trustHost: true,
   providers: [Google],
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
