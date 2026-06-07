@@ -17,3 +17,5 @@ _tmp_*
 .claude/
 .vercel
 .symcheck
+
+deployer/
