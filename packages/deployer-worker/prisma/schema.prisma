@@ -1,0 +1,76 @@
+// hermes-deployer-worker — Prisma schema (design spec §3).
+//
+// Hermes-shaped clone of zynd-deployer's schema:
+//   - Agent.userId + @@index([userId]): multi-user tenancy (Auth.js owns identity).
+//   - Two ports per agent (apiPort -> container 8642, dashboardPort -> 9119),
+//     so PortAllocation.agentId is intentionally NOT @unique (two rows per agent).
+//   - secretRef/llmProvider/personalityId replace zynd's blobPath/keyPath/runtime/image
+//     (Hermes config is 100% env; no uploaded code, no per-language detection).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id            String   @id @default(cuid())
+  userId        String                          // owner (Auth.js user id)
+  name          String
+  slug          String   @unique                // slugify(name) + suffix
+  tenantId      String   @unique                // `${userId}-${name}` (current convention)
+
+  status        String                          // queued|allocating_ports|starting|health_checking|registering_route|running|unhealthy|failed|stopped|crashed
+  errorMessage  String?
+
+  llmProvider   String                          // "openrouter" | "anthropic"
+  secretRef     String                          // pointer to the LLM key (spec §5), NOT the key
+  personalityId String?
+
+  apiPort       Int?                            // host port -> container 8642
+  dashboardPort Int?                            // host port -> container 9119
+  containerId   String?
+  hostUrl       String?                         // https://<domain>/<slug> (dashboard)
+
+  lastExitCode  Int?
+  lastCrashAt   DateTime?
+  createdAt     DateTime @default(now())
+  startedAt     DateTime?
+  stoppedAt     DateTime?
+
+  logs   AgentLog[]
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AgentLog {
+  id        BigInt   @id @default(autoincrement())
+  agentId   String
+  lineNo    Int
+  text      String   @db.Text
+  stream    String                              // "stdout" | "stderr" | "system"
+  ts        DateTime @default(now())
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([agentId, lineNo])
+}
+
+model AgentMetric {
+  id         BigInt   @id @default(autoincrement())
+  agentId    String
+  sampledAt  DateTime @default(now())
+  memUsedMb  Int
+  memLimitMb Int
+  cpuPct     Float
+  @@index([agentId, sampledAt])
+}
+
+model PortAllocation {
+  port    Int      @id                          // source of truth for port uniqueness
+  agentId String                                // NOT unique: two rows per agent (api + dashboard)
+  takenAt DateTime @default(now())
+  @@index([agentId])
+}
