@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vites
 import { WebSocket as WsClient } from "ws";
 import type { AddressInfo } from "node:net";
 
-process.env.DEPLOYER_WS_SECRET = "test-secret-ws-server";
+process.env.DEPLOYER_WS_SECRET = "test-secret-ws-server-000000000000000";
 // A fixed high port: startWsServer treats port<=0 as "disabled" (Task 89), so
 // the integration test cannot use 0 to mean "ephemeral". The server still
 // reports the bound port back via handle.address() for the client URL.

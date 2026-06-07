@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 
 // The secret must exist before src/config.ts (imported transitively by ws-auth) loads.
 // config.ts also requires HERMES_IMAGE at load — stub it so the real config imports.
 beforeAll(() => {
-  process.env.DEPLOYER_WS_SECRET = "test-secret-please-change";
+  process.env.DEPLOYER_WS_SECRET = "test-secret-please-change-00000000000";
   process.env.HERMES_IMAGE ??= "ghcr.io/test/hermes:latest";
 });
 
@@ -68,5 +68,30 @@ describe("ws-auth", () => {
 
     // #then it is rejected as malformed
     expect(result).toEqual({ ok: false, reason: "malformed" });
+  });
+
+});
+
+// A weak/empty DEPLOYER_WS_SECRET must NOT silently enable auth (an attacker
+// can compute HMAC(payload, "") locally and forge a token). config.wsSecret is
+// frozen at module load, so we mock the config module with a short secret to
+// prove ws-auth fails closed regardless of token validity.
+describe("ws-auth fail-closed on a weak secret", () => {
+  it("verify rejects and mint throws when the secret is shorter than 32 chars", async () => {
+    // #given a config whose wsSecret is too short to be usable
+    vi.resetModules();
+    vi.doMock("../src/config.js", () => ({ config: { wsSecret: "short" } }));
+    const { mintToken, verifyToken } = await import("../src/ws-auth.js");
+
+    // #then verify fails closed for any token (no bypass)...
+    expect(verifyToken("anything.atall", "agent_abc")).toEqual({
+      ok: false,
+      reason: "bad_signature",
+    });
+    // ...and mint refuses to issue a token under the weak secret
+    expect(() => mintToken("agent_abc", "user_1", 60)).toThrow(/DEPLOYER_WS_SECRET/);
+
+    vi.doUnmock("../src/config.js");
+    vi.resetModules();
   });
 });
