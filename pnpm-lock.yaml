@@ -10,12 +10,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@hermes/deployer-worker':
+        specifier: workspace:*
+        version: link:../../packages/deployer-worker
       '@hermes/provisioner':
         specifier: workspace:*
         version: link:../../packages/provisioner
       '@hermes/telegram-gateway':
         specifier: workspace:*
         version: link:../../packages/telegram-gateway
+      '@prisma/client':
+        specifier: ^6.2.0
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
       next:
         specifier: 16.2.7
         version: 16.2.7(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
