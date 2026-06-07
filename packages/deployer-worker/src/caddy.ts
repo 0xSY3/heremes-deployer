@@ -124,5 +124,88 @@ export async function ensureServer(): Promise<void> {
   }
 }
 
+/**
+ * Route the agent's dashboard port behind `/<slug>`.
+ *
+ * Hermes differs from zynd: a single path segment `/<slug>` (no
+ * entityType prefix), @id is the agentId, and the upstream is the
+ * dashboard host port (container 9119), not the API port.
+ */
+export async function addRoute(
+  agentId: string,
+  slug: string,
+  dashboardPort: number,
+): Promise<void> {
+  if (cfg.skipCaddy) return;
+  const host = cfg.wildcardDomain;
+  const prefix = `/${slug}`;
+  // Match the prefix exactly (so /<slug> with no trailing slash still
+  // routes) AND any subpath: Caddy's `/<slug>/*` matcher excludes the
+  // bare /<slug>.
+  const route: CaddyRoute = {
+    "@id": agentId,
+    match: [{ host: [host], path: [prefix, `${prefix}/*`] }],
+    handle: [
+      { handler: "rewrite", strip_path_prefix: prefix },
+      {
+        handler: "reverse_proxy",
+        upstreams: [{ dial: `127.0.0.1:${dashboardPort}` }],
+      },
+    ],
+  };
+  await prependRoute(route);
+}
+
+async function prependRoute(route: CaddyRoute): Promise<void> {
+  const path = `/config/apps/http/servers/${cfg.caddyServerName}/routes`;
+
+  const readCurrent = async (): Promise<CaddyRoute[]> => {
+    const r = await adminFetch(path, { method: "GET" });
+    if (!r.ok) return [];
+    const body = (await r.json()) as unknown;
+    return Array.isArray(body) ? (body as CaddyRoute[]) : [];
+  };
+
+  let current = await readCurrent();
+  if (current.length === 0) {
+    // Empty, or the server itself is missing — bootstrap and re-read.
+    await ensureServer();
+    current = await readCurrent();
+  }
+
+  // Drop any existing entry with the same @id so redeploys/restarts don't
+  // accumulate duplicates.
+  const deduped = current.filter((r) => r["@id"] !== route["@id"]);
+  // Prepend at HEAD: the Caddyfile catch-all that forwards the bare
+  // domain to the Next UI lives further down; first-match-wins would
+  // otherwise route /<slug>/* to Next instead of the container.
+  const next = [route, ...deduped];
+
+  // PATCH replaces the value at the path. PUT errors 409 "key already
+  // exists" whenever the array is already present (every case but a
+  // brand-new server).
+  const res = await adminFetch(path, {
+    method: "PATCH",
+    body: JSON.stringify(next),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Caddy addRoute failed: PATCH ${path} returned ${res.status} ${await res.text()}`,
+    );
+  }
+}
+
+export async function removeRoute(agentId: string): Promise<void> {
+  if (cfg.skipCaddy) return;
+  const res = await adminFetch(`/id/${agentId}`, { method: "DELETE" });
+  // 404 means the route already went away — idempotent for our use
+  // (reverse-order rollback in §5 may call this after the route is gone).
+  if (!res.ok && res.status !== 404) {
+    throw new Error(
+      `Caddy removeRoute failed: ${res.status} ${await res.text()}`,
+    );
+  }
+}
+
 export { adminFetch };
 export type { CaddyRoute };

@@ -102,3 +102,82 @@ describe("ensureServer", () => {
     expect(Array.isArray(merged.apps.http.servers[SERVER].routes)).toBe(true);
   });
 });
+
+import { addRoute, removeRoute } from "../src/caddy.js";
+
+const DOMAIN = "deployer.hermes.ai"; // cfg.wildcardDomain default
+
+describe("addRoute", () => {
+  it("prepends a dashboard route with /<slug> prefix and @id=agentId", async () => {
+    const existing = [{ "@id": "other", match: [], handle: [] }];
+    routes.set(
+      `GET /config/apps/http/servers/${SERVER}/routes`,
+      () => ({ ok: true, status: 200, body: existing }),
+    );
+    routes.set(
+      `PATCH /config/apps/http/servers/${SERVER}/routes`,
+      () => ({ ok: true, status: 200, body: "" }),
+    );
+
+    await addRoute("agent_1", "my-bot", 13002);
+
+    const patch = calls.find(
+      (c) => c.method === "PATCH" && c.path.endsWith("/routes"),
+    );
+    expect(patch).toBeDefined();
+    const next = JSON.parse(patch!.init!.body as string);
+    expect(next[0]["@id"]).toBe("agent_1");
+    expect(next[1]["@id"]).toBe("other");
+    expect(next[0].match[0].path).toEqual(["/my-bot", "/my-bot/*"]);
+    expect(next[0].match[0].host).toEqual([DOMAIN]);
+    expect(next[0].handle[0]).toEqual({
+      handler: "rewrite",
+      strip_path_prefix: "/my-bot",
+    });
+    expect(next[0].handle[1].upstreams[0].dial).toBe("127.0.0.1:13002");
+  });
+
+  it("dedups an existing route with the same @id (redeploy)", async () => {
+    const existing = [
+      { "@id": "agent_1", match: [], handle: [] },
+      { "@id": "keep", match: [], handle: [] },
+    ];
+    routes.set(
+      `GET /config/apps/http/servers/${SERVER}/routes`,
+      () => ({ ok: true, status: 200, body: existing }),
+    );
+    routes.set(
+      `PATCH /config/apps/http/servers/${SERVER}/routes`,
+      () => ({ ok: true, status: 200, body: "" }),
+    );
+
+    await addRoute("agent_1", "my-bot", 13002);
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    const next = JSON.parse(patch!.init!.body as string);
+    const ids = next.map((r: { "@id": string }) => r["@id"]);
+    expect(ids.filter((id: string) => id === "agent_1")).toHaveLength(1);
+    expect(ids[0]).toBe("agent_1");
+    expect(ids).toContain("keep");
+  });
+});
+
+describe("removeRoute", () => {
+  it("swallows a 404 (route already gone — idempotent)", async () => {
+    routes.set("DELETE /id/agent_1", () => ({
+      ok: false,
+      status: 404,
+      body: "not found",
+    }));
+    await expect(removeRoute("agent_1")).resolves.toBeUndefined();
+  });
+
+  it("throws on a non-404 error", async () => {
+    routes.set("DELETE /id/agent_1", () => ({
+      ok: false,
+      status: 500,
+      body: "boom",
+    }));
+    await expect(removeRoute("agent_1")).rejects.toThrow(/500/);
+  });
+});
