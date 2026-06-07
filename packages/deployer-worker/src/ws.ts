@@ -12,10 +12,10 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import { prisma } from "./db.js";
-import { config } from "./config.js";
-import { verifyToken } from "./ws-auth.js";
-import { subscribe, snapshotSteps, type Frame } from "./events.js";
+import { prisma } from "./db";
+import { config } from "./config";
+import { verifyToken } from "./ws-auth";
+import { subscribe, snapshotSteps, type Frame } from "./events";
 
 // The deploy socket sends the events.ts Frame union plus a `hello` handshake
 // frame that only the WS layer emits.

@@ -8,7 +8,7 @@
 // Verification uses timingSafeEqual to avoid leaking the MAC byte-by-byte.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { config } from "./config.js";
+import { config } from "./config";
 
 export type VerifyResult =
   | { ok: true; userId: string }

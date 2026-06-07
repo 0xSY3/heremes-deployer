@@ -4,7 +4,7 @@
 // Assumes Caddy is configured at boot with an HTTPS server (cfg.caddyServerName)
 // that has an @id-addressable routes array. See infra/Caddyfile.
 
-import { config as cfg } from "./config.js";
+import { config as cfg } from "./config";
 
 interface CaddyRoute {
   "@id": string;

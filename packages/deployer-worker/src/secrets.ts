@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { getPersonality } from "@hermes/provisioner/presets";
 
-import { config as cfg } from "./config.js";
+import { config as cfg } from "./config";
 
 interface AgeResult {
   stdout: Buffer;
