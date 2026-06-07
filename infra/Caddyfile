@@ -1,0 +1,41 @@
+# Hermes Deployer — single-host, path-based Caddy config.
+#
+# One LE cert for $HERMES_DOMAIN covers everything (no wildcard, no per-agent
+# cert, no rate-limit risk). Layout:
+#   $HERMES_DOMAIN/                     -> Next.js web on :3000 (this file)
+#   $HERMES_DOMAIN/<slug>/...           -> agent container dashboard, prefix
+#                                          stripped (worker prepends the route
+#                                          into the admin API at deploy time)
+#   $HERMES_DOMAIN/v1/agents/<id>/deploy -> worker WS (deploy steps), :7072
+#
+# The worker prepends per-agent path routes via the admin API, so they always
+# evaluate before the catch-all reverse_proxy below (Caddy is first-match-wins).
+# Per-route basic-auth (keyed to the owner) is added by the worker on each
+# agent route — the agent's own dashboard runs with HERMES_DASHBOARD_INSECURE=1
+# (spec §5, decision 1), so Caddy is the real auth boundary.
+#
+# Requirements:
+#   - DNS    A record  $HERMES_DOMAIN -> host IP
+#   - Ports  80 (ACME HTTP-01 + redirect) and 443 open
+#   - Caddy  stock build (no DNS plugin needed — HTTP-01, not wildcard)
+
+{
+	admin 127.0.0.1:2019
+	servers {
+		trusted_proxies static 127.0.0.1/32
+	}
+}
+
+# Replace deployer.example.com with your domain (or templatize in install.sh).
+deployer.example.com {
+	encode gzip
+
+	# Deploy WebSocket → worker (steps + logs). Caddy terminates TLS and proxies
+	# the upgrade to the loopback-only worker WS port.
+	@deployws path /v1/agents/*/deploy
+	reverse_proxy @deployws 127.0.0.1:7072
+
+	# Everything else → Next.js web. Per-agent /<slug> routes are prepended by
+	# the worker above this catch-all at deploy time.
+	reverse_proxy 127.0.0.1:3000
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=Hermes Deployer — background worker (docker + caddy + deploy WS)
+After=network.target postgresql.service docker.service
+Wants=postgresql.service docker.service
+
+[Service]
+Type=simple
+User=hermes
+Group=docker
+WorkingDirectory=/opt/hermes-deployer/packages/deployer-worker
+EnvironmentFile=/etc/hermes-deployer/worker.env
+ExecStart=/usr/bin/node --import tsx/esm bin/main.ts
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+# Worker needs the docker socket + the data root (age secrets). NO bind-mount
+# data dirs to translate (Hermes config is 100% env) — simpler than zynd:
+# there is no HOST_DATA_ROOT path mapping.
+ReadWritePaths=/var/lib/hermes-deployer /var/run/docker.sock
+
+[Install]
+WantedBy=multi-user.target

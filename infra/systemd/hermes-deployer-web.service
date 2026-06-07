@@ -1,0 +1,23 @@
+[Unit]
+Description=Hermes Deployer — Next.js web
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes-deployer/apps/web
+EnvironmentFile=/etc/hermes-deployer/web.env
+ExecStart=/usr/bin/node .next/standalone/apps/web/server.js
+Restart=on-failure
+RestartSec=2
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
