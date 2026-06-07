@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./config": "./src/config.ts",
     "./db": "./src/db.ts",
+    "./secrets": "./src/secrets.ts",
     "./ws-auth": "./src/ws-auth.ts"
   },
   "scripts": {

@@ -1,34 +1,48 @@
 import { NextResponse } from "next/server";
-import { DockerUnavailableError, PortUnavailableError } from "@hermes/provisioner";
 import { getCurrentUser } from "@/lib/auth";
 import { createAgentSchema } from "@/lib/validation";
-import { createAgent, listAgents } from "@/lib/provisioner";
-import { listForUser, getOwned, putOwned, deleteOwned, type OwnedAgent } from "@/lib/store";
-import { MAX_AGENTS_PER_USER } from "@/lib/limits";
-import { withLock } from "@/lib/mutex";
+import { uniqueSlug } from "@/lib/slug";
+import { prisma } from "@/lib/db";
+import { writeSecret, generateApiKey } from "@/lib/secrets";
+import { mintWsToken } from "@/lib/ws-token";
 
-// Local provisioning spawns Docker via child_process — requires the Node runtime.
+// age/Prisma + node crypto require the Node runtime, not the edge runtime.
 export const runtime = "nodejs";
 
-// Defensively strip the LLM key before returning, even though records never hold it.
-function safe(a: OwnedAgent): Omit<OwnedAgent, "llmKey"> {
-  const clone: Record<string, unknown> = { ...a };
-  delete clone.llmKey;
-  return clone as Omit<OwnedAgent, "llmKey">;
-}
+// The deploy socket token is short-lived; the browser opens the socket
+// immediately after create. 5 minutes covers a slow page load + boot.
+const WS_TOKEN_TTL_SEC = 300;
+
+const PROVIDER_TO_ENV = {
+  openrouter: "OPENROUTER_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+} as const;
 
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const agents = await listAgents(user.id);
-  return NextResponse.json({ agents: agents.map(safe) });
+
+  const agents = await prisma.agent.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      hostUrl: true,
+      personalityId: true,
+      createdAt: true,
+    },
+  });
+  return NextResponse.json({ agents });
 }
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const parsed = createAgentSchema.safeParse(await req.json());
+  const parsed = createAgentSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "invalid input" },
@@ -36,47 +50,51 @@ export async function POST(req: Request) {
     );
   }
   const body = parsed.data;
+  const slug = uniqueSlug(body.name);
   const tenantId = `${user.id}-${body.name}`;
 
-  // Per-user lock makes cap-check + placeholder write one critical section, so
-  // concurrent POSTs can't both pass the cap, and in-flight agents count toward it.
-  const reservation = await withLock(`create:${user.id}`, async () => {
-    if (await getOwned(user.id, tenantId)) return { error: "an agent with that name already exists", status: 409 as const };
-    if ((await listForUser(user.id)).length >= MAX_AGENTS_PER_USER) {
-      return { error: `agent limit reached (${MAX_AGENTS_PER_USER} per account)`, status: 409 as const };
-    }
-    await putOwned({
-      tenantId, userId: user.id, name: body.name, channel: "web",
-      url: "", status: "provisioning", createdAt: new Date().toISOString(),
-    });
-    return { ok: true as const };
-  });
-  if ("error" in reservation) {
-    return NextResponse.json({ error: reservation.error }, { status: reservation.status });
-  }
-
   try {
-    const agent = await createAgent(user.id, body);
-    return NextResponse.json({ agent: safe(agent) }, { status: 201 });
-  } catch (err) {
-    // Free the reserved slot so a retry isn't blocked by a dead placeholder.
-    await deleteOwned(tenantId);
+    // Insert first to get the cuid, then write the secret keyed by that id.
+    // Status starts `queued` — the worker (single writer) drives it forward.
+    const agent = await prisma.agent.create({
+      data: {
+        userId: user.id,
+        name: body.name,
+        slug,
+        tenantId,
+        status: "queued",
+        llmProvider: body.llmProvider,
+        secretRef: "", // filled in by the update below once we know the id
+        ...(body.personalityId ? { personalityId: body.personalityId } : {}),
+      },
+      select: { id: true, slug: true, status: true },
+    });
 
-    // Preflight error carries no argv/secret, so its message is safe to surface.
-    if (err instanceof DockerUnavailableError) {
-      console.error("agent provision blocked:", err.message);
-      return NextResponse.json({ error: err.message }, { status: 503 });
-    }
-    // Carries only a port hint (no argv/secret), so safe to surface.
-    if (err instanceof PortUnavailableError) {
-      console.error("agent provision port conflict:", err.message);
-      return NextResponse.json({ error: err.message }, { status: 409 });
-    }
-    // Never echo raw errors: a failed docker run can carry the user's LLM key.
-    console.error("agent provision failed:", err);
+    // Encrypt {API_SERVER_KEY, <provider key>} to <dataRoot>/secrets/<id>.age
+    // (spec §5). writeSecret takes a FLAT env record (see Shared-module
+    // contract) — the same shape buildAgentEnv reads back at `starting`. The
+    // raw key never lands on the Agent row; only the returned secretRef path does.
+    const secretRef = await writeSecret(agent.id, {
+      API_SERVER_KEY: generateApiKey(),
+      [PROVIDER_TO_ENV[body.llmProvider]]: body.llmKey,
+    });
+    await prisma.agent.update({ where: { id: agent.id }, data: { secretRef } });
+
+    const wsToken = mintWsToken(agent.id, user.id, WS_TOKEN_TTL_SEC);
     return NextResponse.json(
-      { error: "Provisioning failed. Check that Docker is running and try again." },
-      { status: 500 },
+      { id: agent.id, slug: agent.slug, status: agent.status, wsToken },
+      { status: 201 },
     );
+  } catch (err) {
+    // A unique-constraint collision (slug/tenantId) is the expected user-facing
+    // conflict; everything else is a 500 with no key echo (the body holds the LLM key).
+    if (err instanceof Error && err.message.includes("Unique constraint")) {
+      return NextResponse.json(
+        { error: "an agent with that name already exists" },
+        { status: 409 },
+      );
+    }
+    console.error("agent create failed:", err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: "Could not create the agent." }, { status: 500 });
   }
 }

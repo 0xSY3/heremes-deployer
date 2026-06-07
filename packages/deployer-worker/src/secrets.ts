@@ -5,6 +5,7 @@
 // Requires `age` and `age-keygen` on PATH. See infra/install.sh.
 
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -153,6 +154,12 @@ export async function deleteSecret(
 ): Promise<void> {
   const dataRoot = opts.dataRoot ?? cfg.dataRoot;
   await rm(secretPath(agentId, dataRoot), { force: true });
+}
+
+// 24 random bytes -> 48 hex chars. Used as API_SERVER_KEY in the per-agent
+// secret; rotated only by recreating the agent.
+export function generateApiKey(): string {
+  return randomBytes(24).toString("hex");
 }
 
 export type LlmProvider = "openrouter" | "anthropic";
