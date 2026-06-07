@@ -8,6 +8,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { getPersonality } from "@hermes/provisioner/presets";
+
 import { config as cfg } from "./config.js";
 
 interface AgeResult {
@@ -151,4 +153,70 @@ export async function deleteSecret(
 ): Promise<void> {
   const dataRoot = opts.dataRoot ?? cfg.dataRoot;
   await rm(secretPath(agentId, dataRoot), { force: true });
+}
+
+export type LlmProvider = "openrouter" | "anthropic";
+
+// Provider -> the env var the Hermes image reads its LLM key from.
+// anthropic uses the native ANTHROPIC_API_KEY; everything else routes
+// through OpenRouter (spec §4).
+function providerKeyName(provider: LlmProvider): string {
+  return provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENROUTER_API_KEY";
+}
+
+export interface BuildAgentEnvOpts {
+  secret: Record<string, string>;
+  llmProvider: LlmProvider;
+  personalityId?: string;
+}
+
+// Personality presets boot the same image with a different system prompt
+// (and optionally a model override) injected purely via env.
+function personalityEnv(personalityId: string | undefined): Record<string, string> {
+  const preset = personalityId ? getPersonality(personalityId) : undefined;
+  if (!preset) return {};
+  const env: Record<string, string> = {
+    HERMES_EPHEMERAL_SYSTEM_PROMPT: preset.systemPrompt,
+  };
+  if (preset.model) env.HERMES_MODEL = preset.model;
+  return env;
+}
+
+// Assemble the full container Env for one agent: API server key + the
+// provider's LLM key (both from the decrypted secret), the fixed
+// API/dashboard flags, the default model, and optional personality env.
+// Pure function — no Docker, no encryption — so the lifecycle can call it
+// right after readSecret() at the `starting` transition (spec §4/§5).
+export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
+  const keyName = providerKeyName(opts.llmProvider);
+  const llmKey = opts.secret[keyName];
+  if (!llmKey) {
+    // Scrubbed: name the missing env var, never echo the secret contents.
+    throw new Error(`secret is missing ${keyName} for provider ${opts.llmProvider}`);
+  }
+
+  const apiServerKey = opts.secret.API_SERVER_KEY;
+  if (!apiServerKey) {
+    throw new Error("secret is missing API_SERVER_KEY");
+  }
+
+  return {
+    API_SERVER_KEY: apiServerKey,
+    [keyName]: llmKey,
+    API_SERVER_ENABLED: "true",
+    API_SERVER_HOST: "0.0.0.0",
+    HERMES_UID: "10000",
+    // Pin a model that works with any OpenRouter key; the image default
+    // (minimax) 404s without a data-policy toggle.
+    HERMES_MODEL: cfg.defaultModel,
+    HERMES_DASHBOARD: "1",
+    // Bind to all interfaces inside the container so the published
+    // loopback port is reachable; the host binding stays 127.0.0.1.
+    HERMES_DASHBOARD_HOST: "0.0.0.0",
+    HERMES_DASHBOARD_TUI: "1",
+    // Dashboard's own OAuth is skipped; auth is enforced at Caddy (§5).
+    HERMES_DASHBOARD_INSECURE: "1",
+    // Spread last so a preset model override wins over the default.
+    ...personalityEnv(opts.personalityId),
+  };
 }

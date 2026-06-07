@@ -22,6 +22,7 @@
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
+    "@hermes/provisioner": "workspace:*",
     "@prisma/client": "^6.2.0",
     "dockerode": "^4.0.2",
     "ws": "^8.18.0",

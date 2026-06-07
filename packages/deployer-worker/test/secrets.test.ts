@@ -12,6 +12,7 @@ vi.hoisted(() => {
 
 import {
   ageAvailable,
+  buildAgentEnv,
   decryptFile,
   deleteSecret,
   encryptToFile,
@@ -94,5 +95,65 @@ d("per-agent secret file", () => {
     await deleteSecret(agentId, { dataRoot: tmp });
     await expect(readSecret(agentId, { dataRoot: tmp, identityPath })).rejects.toThrow();
     await expect(deleteSecret(agentId, { dataRoot: tmp })).resolves.toBeUndefined();
+  });
+});
+
+describe("buildAgentEnv", () => {
+  const base = {
+    API_SERVER_KEY: "k-server",
+  };
+
+  it("maps openrouter provider to OPENROUTER_API_KEY", () => {
+    const secret = { ...base, OPENROUTER_API_KEY: "sk-or-x" };
+    const env = buildAgentEnv({ secret, llmProvider: "openrouter" });
+    expect(env.OPENROUTER_API_KEY).toBe("sk-or-x");
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.API_SERVER_KEY).toBe("k-server");
+    expect(env.API_SERVER_ENABLED).toBe("true");
+    expect(env.API_SERVER_HOST).toBe("0.0.0.0");
+    expect(env.HERMES_UID).toBe("10000");
+    expect(env.HERMES_DASHBOARD).toBe("1");
+    expect(env.HERMES_DASHBOARD_HOST).toBe("0.0.0.0");
+    expect(env.HERMES_DASHBOARD_TUI).toBe("1");
+    expect(env.HERMES_DASHBOARD_INSECURE).toBe("1");
+    expect(env.HERMES_MODEL).toBe("google/gemini-2.5-flash");
+    expect(env.HERMES_EPHEMERAL_SYSTEM_PROMPT).toBeUndefined();
+  });
+
+  it("maps anthropic provider to ANTHROPIC_API_KEY", () => {
+    const secret = { ...base, ANTHROPIC_API_KEY: "sk-ant-y" };
+    const env = buildAgentEnv({ secret, llmProvider: "anthropic" });
+    expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-y");
+    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+  });
+
+  it("injects personality system prompt and lets a preset model override the default", () => {
+    const secret = { ...base, OPENROUTER_API_KEY: "sk-or-x" };
+    const env = buildAgentEnv({
+      secret,
+      llmProvider: "openrouter",
+      personalityId: "coding",
+    });
+    expect(env.HERMES_EPHEMERAL_SYSTEM_PROMPT).toContain("senior software engineer");
+    expect(env.HERMES_MODEL).toBe("google/gemini-2.5-flash");
+  });
+
+  it("ignores an unknown personalityId (no prompt injected)", () => {
+    const secret = { ...base, OPENROUTER_API_KEY: "sk-or-x" };
+    const env = buildAgentEnv({
+      secret,
+      llmProvider: "openrouter",
+      personalityId: "does-not-exist",
+    });
+    expect(env.HERMES_EPHEMERAL_SYSTEM_PROMPT).toBeUndefined();
+  });
+
+  it("throws if the secret is missing the provider key", () => {
+    expect(() =>
+      buildAgentEnv({
+        secret: { ...base, OPENROUTER_API_KEY: "sk-or-x" },
+        llmProvider: "anthropic",
+      }),
+    ).toThrow(/ANTHROPIC_API_KEY/);
   });
 });
