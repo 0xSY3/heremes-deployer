@@ -115,6 +115,21 @@ export async function drive(agentId: string): Promise<void> {
   if (!agent) return;
   if (!ACTIVE_STATUSES.includes(agent.status)) return;
 
+  // Restart safety: a re-queued agent (control: restart, or a re-driven row)
+  // may still carry a container + ports from its previous run. Tear those down
+  // BEFORE allocating new ones — otherwise the old container (RestartPolicy:
+  // unless-stopped) keeps running and its PortAllocation rows leak. Idempotent:
+  // a fresh `queued` agent has no containerId/ports, so this is a no-op.
+  if (agent.containerId || agent.apiPort != null || agent.dashboardPort != null) {
+    if (agent.containerId) await stopAndRemove(agent.containerId).catch(() => undefined);
+    await removeRoute(agentId).catch(() => undefined);
+    await releasePort(agentId).catch(() => undefined);
+    await prisma.agent.update({
+      where: { id: agentId },
+      data: { containerId: null, apiPort: null, dashboardPort: null },
+    });
+  }
+
   let apiPort: number | null = null;
   let dashboardPort: number | null = null;
   let containerId: string | null = null;

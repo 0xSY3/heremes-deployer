@@ -211,3 +211,33 @@ test("drive is a no-op when the agent row is missing", async () => {
   expect(allocatePortMock).not.toHaveBeenCalled();
   expect(stepCalls).toEqual([]);
 });
+
+test("restart: drive tears down a stale container + ports before re-allocating", async () => {
+  // #given a re-queued agent that still carries its previous run's container
+  //   and ports (control: restart sets status=queued without clearing them)
+  findUniqueMock.mockResolvedValue({
+    ...AGENT,
+    status: "queued",
+    containerId: "stale-container",
+    apiPort: 8001,
+    dashboardPort: 9001,
+  });
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then the stale container is removed, its route cleared, and its ports
+  //   released BEFORE the new allocation — no orphaned container, no leaked ports
+  expect(stopAndRemoveMock).toHaveBeenCalledWith("stale-container");
+  expect(removeRouteMock).toHaveBeenCalledWith("agent-1");
+  expect(releasePortMock).toHaveBeenCalledWith("agent-1");
+  const clearCall = updateMock.mock.calls.find(
+    (c) =>
+      (c[0] as { data?: Record<string, unknown> }).data?.containerId === null &&
+      (c[0] as { data?: Record<string, unknown> }).data?.apiPort === null,
+  );
+  expect(clearCall).toBeDefined();
+  // #and the redeploy still completes (fresh ports allocated, new container run)
+  expect(allocatePortMock).toHaveBeenCalledTimes(2);
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
