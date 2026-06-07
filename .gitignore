@@ -19,3 +19,6 @@ _tmp_*
 .symcheck
 
 deployer/
+
+# Local planning artifacts (spec/plan) — not part of the repo.
+docs/superpowers/
