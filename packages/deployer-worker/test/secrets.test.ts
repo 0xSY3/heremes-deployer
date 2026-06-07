@@ -13,8 +13,11 @@ vi.hoisted(() => {
 import {
   ageAvailable,
   decryptFile,
+  deleteSecret,
   encryptToFile,
   readIdentity,
+  readSecret,
+  writeSecret,
 } from "../src/secrets.js";
 
 // age/age-keygen are provisioned by infra/install.sh. On a dev box without
@@ -61,5 +64,35 @@ d("age primitives", () => {
     const bad = join(tmp, "bad.age");
     await writeFile(bad, "not an identity\n", "utf8");
     await expect(readIdentity(bad)).rejects.toThrow(/malformed/);
+  });
+});
+
+d("per-agent secret file", () => {
+  const agentId = "agent_abc123";
+  const payload = {
+    API_SERVER_KEY: "deadbeefdeadbeefdeadbeef",
+    OPENROUTER_API_KEY: "sk-or-v1-topsecret",
+  };
+
+  it("writeSecret -> readSecret round-trips the payload", async () => {
+    const path = await writeSecret(agentId, payload, { dataRoot: tmp, identityPath });
+    const back = await readSecret(agentId, { dataRoot: tmp, identityPath });
+    expect(path).toBe(join(tmp, "secrets", `${agentId}.age`));
+    expect(back).toEqual(payload);
+  });
+
+  it("never writes the plaintext key to the .age file", async () => {
+    const path = await writeSecret(agentId, payload, { dataRoot: tmp, identityPath });
+    const onDisk = await readFile(path, "utf8");
+    expect(onDisk.startsWith("age-encryption.org/v1")).toBe(true);
+    expect(onDisk).not.toContain("sk-or-v1-topsecret");
+    expect(onDisk).not.toContain("deadbeefdeadbeefdeadbeef");
+  });
+
+  it("deleteSecret removes the file and is idempotent on ENOENT", async () => {
+    await writeSecret(agentId, payload, { dataRoot: tmp, identityPath });
+    await deleteSecret(agentId, { dataRoot: tmp });
+    await expect(readSecret(agentId, { dataRoot: tmp, identityPath })).rejects.toThrow();
+    await expect(deleteSecret(agentId, { dataRoot: tmp })).resolves.toBeUndefined();
   });
 });

@@ -5,7 +5,8 @@
 // Requires `age` and `age-keygen` on PATH. See infra/install.sh.
 
 import { spawn, spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 
 import { config as cfg } from "./config.js";
 
@@ -96,4 +97,58 @@ export async function decryptFile(
     throw new Error(`age decrypt failed (${code}): ${stderr}`);
   }
   return stdout;
+}
+
+interface SecretFileOpts {
+  dataRoot?: string;
+  identityPath?: string;
+}
+
+// <dataRoot>/secrets/<agentId>.age — the path stored as Agent.secretRef.
+function secretPath(agentId: string, dataRoot: string = cfg.dataRoot): string {
+  return join(dataRoot, "secrets", `${agentId}.age`);
+}
+
+// age-encrypt the agent's secret env ({API_SERVER_KEY, <LLM key>}) JSON to
+// disk and return the path. The plaintext never hits disk — only the
+// ciphertext file is written (spec §5).
+export async function writeSecret(
+  agentId: string,
+  payload: Record<string, string>,
+  opts: SecretFileOpts = {},
+): Promise<string> {
+  const dataRoot = opts.dataRoot ?? cfg.dataRoot;
+  const out = secretPath(agentId, dataRoot);
+  await mkdir(join(dataRoot, "secrets"), { recursive: true });
+  await encryptToFile(
+    Buffer.from(JSON.stringify(payload), "utf8"),
+    out,
+    opts.identityPath ?? cfg.ageIdentityPath,
+  );
+  return out;
+}
+
+// Decrypt the per-agent secret file and parse it back to the env record.
+// Used at the `starting` transition; the result is injected as container
+// Env and never persisted.
+export async function readSecret(
+  agentId: string,
+  opts: SecretFileOpts = {},
+): Promise<Record<string, string>> {
+  const dataRoot = opts.dataRoot ?? cfg.dataRoot;
+  const buf = await decryptFile(
+    secretPath(agentId, dataRoot),
+    opts.identityPath ?? cfg.ageIdentityPath,
+  );
+  return JSON.parse(buf.toString("utf8")) as Record<string, string>;
+}
+
+// Remove the secret file on agent teardown. ENOENT is swallowed so cleanup
+// is idempotent (the reverse-order rollback in §5 may run it twice).
+export async function deleteSecret(
+  agentId: string,
+  opts: Pick<SecretFileOpts, "dataRoot"> = {},
+): Promise<void> {
+  const dataRoot = opts.dataRoot ?? cfg.dataRoot;
+  await rm(secretPath(agentId, dataRoot), { force: true });
 }
