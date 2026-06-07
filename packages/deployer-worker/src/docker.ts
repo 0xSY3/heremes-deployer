@@ -9,7 +9,7 @@
 
 import Docker from "dockerode";
 
-import { config } from "./config";
+import { config, API_PORT, DASHBOARD_PORT } from "./config";
 
 export const docker = new Docker({ socketPath: config.dockerSocket });
 
@@ -107,4 +107,109 @@ export async function tailLogs(containerId: string, lines = 200): Promise<string
   } catch {
     return "";
   }
+}
+
+export interface RunContainerOpts {
+  agentId: string;
+  /** Fixed Hermes gateway image (config.hermesImage). No per-agent build. */
+  image: string;
+  /**
+   * Fully-resolved container environment (secret already decrypted in memory by
+   * the caller). Flattened to dockerode's "K=V"[] Env. SECURITY: never logged,
+   * never echoed into an error.
+   */
+  env: Record<string, string>;
+  /** Host port bound to the container's API port (8642). */
+  apiPort: number;
+  /** Host port bound to the container's dashboard port (9119). */
+  dashboardPort: number;
+}
+
+/**
+ * Create and start the Hermes gateway container for an agent. Returns the
+ * container id. The caller owns error cleanup (remove container + release both
+ * ports) if a downstream step fails — runContainer does not clean up on failure.
+ *
+ * SECURITY: the Env array carries the agent's LLM key and API_SERVER_KEY. Never
+ * surface Env or argv in a log line or thrown error — only the daemon's own
+ * message. Both ports bind to 127.0.0.1 only; nothing but Caddy can reach them.
+ */
+export async function runContainer(opts: RunContainerOpts): Promise<string> {
+  const env: string[] = [];
+  for (const [k, v] of Object.entries(opts.env)) {
+    env.push(`${k}=${v}`);
+  }
+
+  // Count only — never the values (secret-safe logging).
+  console.log(
+    `[docker] createContainer agent=${opts.agentId} image=${opts.image} ` +
+      `apiPort=${opts.apiPort} dashboardPort=${opts.dashboardPort} ` +
+      `mem=${config.containerMemoryMb}MB cpuMillis=${config.containerCpuMillis} ` +
+      `envVars=${env.length}`,
+  );
+
+  const container = await docker.createContainer({
+    name: `hermes-${opts.agentId}`,
+    Image: opts.image,
+    // Headless: the interactive CLI EOFs in a non-TTY container, so always
+    // "gateway run".
+    Cmd: ["gateway", "run"],
+    Env: env,
+    ExposedPorts: {
+      [`${API_PORT}/tcp`]: {},
+      [`${DASHBOARD_PORT}/tcp`]: {},
+    },
+    HostConfig: {
+      PortBindings: {
+        [`${API_PORT}/tcp`]: [
+          { HostIp: "127.0.0.1", HostPort: String(opts.apiPort) },
+        ],
+        [`${DASHBOARD_PORT}/tcp`]: [
+          { HostIp: "127.0.0.1", HostPort: String(opts.dashboardPort) },
+        ],
+      },
+      RestartPolicy: { Name: "unless-stopped" },
+      Memory: config.containerMemoryMb * 1024 * 1024,
+      NanoCpus: config.containerCpuMillis * 1_000_000,
+      ReadonlyRootfs: true,
+      // Read-only rootfs needs a writable /tmp for the gateway's scratch.
+      // exec is allowed; size counts against the container memory limit.
+      Tmpfs: { "/tmp": `rw,exec,size=${config.containerTmpfsMb}m` },
+      // Block privilege escalation (setuid binaries can't gain capabilities).
+      SecurityOpt: ["no-new-privileges"],
+    },
+    // Crash watcher filters die/oom events by this label.
+    Labels: { "hermes.agent": opts.agentId },
+  });
+
+  await container.start();
+  console.log(
+    `[docker] started agent=${opts.agentId} container=${container.id.slice(0, 12)}`,
+  );
+  return container.id;
+}
+
+/**
+ * Poll the freshly started container's API /health until it returns 200 or the
+ * boot timeout elapses. Hermes has no entrypoint install step to wait on, so
+ * this is the single readiness gate before the agent is marked running.
+ * Loopback only — the port is bound to 127.0.0.1.
+ */
+export async function waitForHealth(apiPort: number): Promise<void> {
+  const url = `http://127.0.0.1:${apiPort}/health`;
+  const deadline = Date.now() + config.bootHealthTimeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(config.bootHealthIntervalMs * 2),
+      });
+      if (res.status === 200) return;
+    } catch {
+      // Connection refused / timeout while the gateway is still booting — retry.
+    }
+    await new Promise((r) => setTimeout(r, config.bootHealthIntervalMs));
+  }
+
+  throw new Error(`Container /health on port ${apiPort} did not return 200 within boot timeout`);
 }

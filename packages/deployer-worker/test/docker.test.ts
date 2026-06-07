@@ -1,8 +1,12 @@
 import { beforeEach, expect, test, vi } from "vitest";
 
 const getContainer = vi.fn();
+const createContainerMock = vi.fn();
 vi.mock("dockerode", () => ({
-  default: vi.fn().mockImplementation(() => ({ getContainer })),
+  default: vi.fn().mockImplementation(() => ({
+    getContainer,
+    createContainer: createContainerMock,
+  })),
 }));
 
 vi.mock("../src/config", () => ({
@@ -15,6 +19,8 @@ vi.mock("../src/config", () => ({
     bootHealthTimeoutMs: 1000,
     bootHealthIntervalMs: 10,
   },
+  API_PORT: 8642,
+  DASHBOARD_PORT: 9119,
 }));
 
 const { tailLogs, stopAndRemove, inspectExitCode, inspectTerminalState } = await import(
@@ -106,4 +112,101 @@ test("inspectTerminalState maps state + converts the memory limit to MB", async 
     finishedAt: "2026-06-08T00:01:00Z",
     memoryLimitMb: 1536,
   });
+});
+
+// --- appended: Task 23 ---
+import { afterEach } from "vitest";
+
+const { runContainer, waitForHealth, docker } = await import("../src/docker");
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+test("runContainer builds the Hermes createContainer arg object (no binds, two loopback ports)", async () => {
+  const start = vi.fn().mockResolvedValue(undefined);
+  const createContainer = vi
+    .spyOn(docker, "createContainer")
+    .mockResolvedValue({ id: "deadbeefcafe0000", start } as never);
+
+  const id = await runContainer({
+    agentId: "agent-1",
+    image: "hermes/gateway:latest",
+    env: { API_SERVER_KEY: "secret-key", OPENROUTER_API_KEY: "sk-or-xxx", API_SERVER_ENABLED: "true" },
+    apiPort: 13000,
+    dashboardPort: 13001,
+  });
+
+  expect(id).toBe("deadbeefcafe0000");
+  expect(start).toHaveBeenCalledOnce();
+
+  const arg = createContainer.mock.calls[0]![0] as Record<string, unknown>;
+  const hostConfig = arg.HostConfig as Record<string, unknown>;
+
+  expect(arg.name).toBe("hermes-agent-1");
+  expect(arg.Image).toBe("hermes/gateway:latest");
+  expect(arg.Cmd).toEqual(["gateway", "run"]);
+  expect(arg.Env).toEqual([
+    "API_SERVER_KEY=secret-key",
+    "OPENROUTER_API_KEY=sk-or-xxx",
+    "API_SERVER_ENABLED=true",
+  ]);
+  expect(arg.ExposedPorts).toEqual({ "8642/tcp": {}, "9119/tcp": {} });
+  expect(arg.Labels).toEqual({ "hermes.agent": "agent-1" });
+
+  expect(hostConfig.PortBindings).toEqual({
+    "8642/tcp": [{ HostIp: "127.0.0.1", HostPort: "13000" }],
+    "9119/tcp": [{ HostIp: "127.0.0.1", HostPort: "13001" }],
+  });
+  expect(hostConfig.RestartPolicy).toEqual({ Name: "unless-stopped" });
+  expect(hostConfig.Memory).toBe(1536 * 1024 * 1024);
+  expect(hostConfig.NanoCpus).toBe(1000 * 1_000_000);
+  expect(hostConfig.ReadonlyRootfs).toBe(true);
+  expect(hostConfig.Tmpfs).toEqual({ "/tmp": "rw,exec,size=512m" });
+  expect(hostConfig.SecurityOpt).toEqual(["no-new-privileges"]);
+  expect(hostConfig.Binds).toBeUndefined();
+});
+
+test("runContainer never surfaces env or argv in the error — only the daemon message", async () => {
+  vi.spyOn(docker, "createContainer").mockRejectedValue(
+    new Error("Error response from daemon: pull access denied"),
+  );
+  let caught: unknown;
+  try {
+    await runContainer({
+      agentId: "agent-1",
+      image: "hermes/gateway:latest",
+      env: { OPENROUTER_API_KEY: "sk-or-SUPER-SECRET" },
+      apiPort: 13000,
+      dashboardPort: 13001,
+    });
+  } catch (e) {
+    caught = e;
+  }
+  const msg = String((caught as Error).message);
+  expect(msg).toContain("pull access denied");
+  expect(msg).not.toContain("sk-or-SUPER-SECRET");
+  expect(msg).not.toContain("OPENROUTER_API_KEY");
+});
+
+test("waitForHealth resolves once /health returns 200", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({ status: 503 })
+    .mockResolvedValueOnce({ status: 200 });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await waitForHealth(13000);
+
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const url = String(fetchMock.mock.calls[0]![0]);
+  expect(url).toBe("http://127.0.0.1:13000/health");
+});
+
+test("waitForHealth throws after the boot timeout when /health never returns 200", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockRejectedValue(new Error("ECONNREFUSED")),
+  );
+  await expect(waitForHealth(13000)).rejects.toThrow(/health.*did not return 200/i);
 });
