@@ -14,50 +14,29 @@ export function AgentCard({
   deleting,
 }: {
   agent: AgentView;
-  onDelete: (tenantId: string) => void;
+  onDelete: (id: string) => void;
   onUpdate: (agent: AgentView) => void;
   deleting: boolean;
 }) {
   const [busy, setBusy] = useState<Action | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
-  const [tgBusy, setTgBusy] = useState(false);
-  const [tgNote, setTgNote] = useState<string | null>(null);
   const running = agent.status === "running";
   const stopped = agent.status === "stopped";
 
   async function control(action: Action) {
     setBusy(action);
     try {
-      const res = await fetch(`/api/agents/${agent.tenantId}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/agents/${agent.id}/control`, {
+        method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action }),
       });
       if (res.ok) {
-        const data = await res.json();
-        onUpdate(data.agent as AgentView);
+        const data = (await res.json()) as { agent: { id: string; status: string } };
+        onUpdate({ ...agent, status: data.agent.status });
       }
     } finally {
       setBusy(null);
-    }
-  }
-
-  async function connectTelegram() {
-    setTgBusy(true);
-    setTgNote(null);
-    try {
-      const res = await fetch(`/api/agents/${agent.tenantId}/telegram`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setTgNote(data.error ?? "Could not create a connect link.");
-        return;
-      }
-      window.open(data.url as string, "_blank", "noopener,noreferrer");
-      setTgNote("Opened Telegram — tap Start to finish connecting.");
-    } catch {
-      setTgNote("Network error creating the connect link.");
-    } finally {
-      setTgBusy(false);
     }
   }
 
@@ -75,44 +54,25 @@ export function AgentCard({
         <div className="mt-3">
           <StatusBadge status={agent.status} />
         </div>
-        {agent.status === "provisioning" && (
-          <p className="mt-3 text-xs text-muted breathe">booting container… (~30s)</p>
-        )}
-        {running && (
-          <>
-            <a
-              href={agent.url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-block truncate text-xs text-gold hover:underline"
-            >
-              {agent.url}
-            </a>
-            <p className="mt-1 text-[11px] text-muted">
-              Open → <span className="text-parchment">Chat</span> tab for web chat, or{" "}
-              <span className="text-parchment">Connect Telegram</span> to message it from Telegram.
-            </p>
-          </>
+        {running && agent.hostUrl && (
+          <a
+            href={agent.hostUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block truncate text-xs text-gold hover:underline"
+          >
+            {agent.hostUrl}
+          </a>
         )}
         {stopped && (
           <p className="mt-3 text-[11px] text-muted">Stopped. Start it again to chat.</p>
         )}
-        {tgNote && <p className="mt-2 text-[11px] text-gold">{tgNote}</p>}
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        {running && (
-          <button
-            onClick={connectTelegram}
-            disabled={tgBusy}
-            className="rounded border border-gold-dim px-3 py-1 text-xs uppercase tracking-wider text-gold transition-colors hover:bg-gold hover:text-ink disabled:opacity-50"
-          >
-            {tgBusy ? "linking…" : "Connect Telegram ✈"}
-          </button>
-        )}
-        {running && (
+        {running && agent.hostUrl && (
           <a
-            href={agent.url}
+            href={agent.hostUrl}
             target="_blank"
             rel="noreferrer"
             className="rounded border border-gold-dim px-3 py-1 text-xs uppercase tracking-wider text-gold transition-colors hover:bg-gold hover:text-ink"
@@ -138,7 +98,7 @@ export function AgentCard({
           </button>
         )}
         <button
-          onClick={() => onDelete(agent.tenantId)}
+          onClick={() => onDelete(agent.id)}
           disabled={deleting || !!busy}
           className="rounded border border-panel-edge px-3 py-1 text-xs uppercase tracking-wider text-muted transition-colors hover:border-red hover:text-red disabled:opacity-40"
         >
@@ -146,7 +106,7 @@ export function AgentCard({
         </button>
       </div>
 
-      {logsOpen && <LogsModal tenantId={agent.tenantId} name={agent.name} onClose={() => setLogsOpen(false)} />}
+      {logsOpen && <LogsModal agentId={agent.id} name={agent.name} onClose={() => setLogsOpen(false)} />}
     </div>
   );
 }

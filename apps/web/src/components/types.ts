@@ -1,10 +1,10 @@
 // Client-side view of an agent (secrets already stripped by the API).
 export interface AgentView {
-  tenantId: string;
+  id: string;
   name: string;
-  url: string;
+  slug: string;
   status: string;
-  channel: string;
+  hostUrl: string | null;
   personalityId?: string;
   createdAt: string;
 }

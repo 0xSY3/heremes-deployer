@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 
 export function LogsModal({
-  tenantId,
+  agentId,
   name,
   onClose,
 }: {
-  tenantId: string;
+  agentId: string;
   name: string;
   onClose: () => void;
 }) {
@@ -17,7 +17,7 @@ export function LogsModal({
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`/api/agents/${tenantId}/logs`);
+        const res = await fetch(`/api/agents/${agentId}/logs`);
         const data = await res.json();
         if (!cancelled) setLogs(res.ok ? data.logs || "(no output yet)" : data.error || "could not read logs");
       } catch {
@@ -30,7 +30,7 @@ export function LogsModal({
       cancelled = true;
       clearInterval(id);
     };
-  }, [tenantId]);
+  }, [agentId]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/85 backdrop-blur-sm" onClick={onClose}>

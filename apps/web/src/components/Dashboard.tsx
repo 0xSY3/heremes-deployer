@@ -27,6 +27,8 @@ export function Dashboard({
 
   // Poll live status while any agent exists, catching both provisioning→running
   // and later crashes; interval stays stable by reading the freshest list via ref.
+  // GET /api/agents/[id] returns { agent: { id, name, slug, status, hostUrl, ... } };
+  // merge the live status/hostUrl into the card's existing AgentView.
   useEffect(() => {
     let cancelled = false;
     const id = setInterval(async () => {
@@ -35,10 +37,12 @@ export function Dashboard({
       const updated = await Promise.all(
         current.map(async (a) => {
           try {
-            const res = await fetch(`/api/agents/${a.tenantId}`);
+            const res = await fetch(`/api/agents/${a.id}`);
             if (!res.ok) return a;
-            const data = await res.json();
-            return data.agent as AgentView;
+            const { agent } = (await res.json()) as {
+              agent: { status: string; hostUrl: string | null };
+            };
+            return { ...a, status: agent.status, hostUrl: agent.hostUrl };
           } catch {
             return a;
           }
@@ -54,8 +58,8 @@ export function Dashboard({
 
   // The modal hands off to the live deploy view and signals completion with no
   // payload, so refresh the list from the API. GET /api/agents returns the
-  // Prisma shape ({id, slug, hostUrl, ...}); map it to the AgentView the cards
-  // render (id→tenantId, hostUrl→url) so page.tsx/AgentCard stay unchanged.
+  // Prisma-shaped AgentView rows ({id, name, slug, status, hostUrl, ...}); map
+  // straight through to the cards.
   async function refreshAgents() {
     const res = await fetch("/api/agents");
     if (!res.ok) return;
@@ -63,19 +67,20 @@ export function Dashboard({
       agents: Array<{
         id: string;
         name: string;
+        slug: string;
         status: string;
         hostUrl: string | null;
-        personalityId: string | null;
+        personalityId?: string;
         createdAt: string;
       }>;
     };
     setAgents(
       rows.map((a) => ({
-        tenantId: a.id,
+        id: a.id,
         name: a.name,
-        url: a.hostUrl ?? "",
+        slug: a.slug,
         status: a.status,
-        channel: "web",
+        hostUrl: a.hostUrl,
         ...(a.personalityId ? { personalityId: a.personalityId } : {}),
         createdAt: a.createdAt,
       })),
@@ -83,14 +88,14 @@ export function Dashboard({
   }
 
   function onAgentUpdate(updated: AgentView) {
-    setAgents((prev) => prev.map((a) => (a.tenantId === updated.tenantId ? updated : a)));
+    setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   }
 
-  async function onDelete(tenantId: string) {
-    setDeleting(tenantId);
+  async function onDelete(id: string) {
+    setDeleting(id);
     try {
-      await fetch(`/api/agents/${tenantId}`, { method: "DELETE" });
-      setAgents((prev) => prev.filter((a) => a.tenantId !== tenantId));
+      await fetch(`/api/agents/${id}`, { method: "DELETE" });
+      setAgents((prev) => prev.filter((a) => a.id !== id));
     } finally {
       setDeleting(null);
     }
@@ -144,12 +149,12 @@ export function Dashboard({
       ) : (
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {agents.map((a, i) => (
-            <div key={a.tenantId} className="rise" style={{ animationDelay: `${i * 50}ms` }}>
+            <div key={a.id} className="rise" style={{ animationDelay: `${i * 50}ms` }}>
               <AgentCard
                 agent={a}
                 onDelete={onDelete}
                 onUpdate={onAgentUpdate}
-                deleting={deleting === a.tenantId}
+                deleting={deleting === a.id}
               />
             </div>
           ))}
