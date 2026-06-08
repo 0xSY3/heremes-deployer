@@ -16,7 +16,9 @@ DATA_ROOT=/var/lib/hermes-deployer
 ETC_DIR=/etc/hermes-deployer
 HERMES_USER=hermes
 # Override with HERMES_IMAGE=... before running to pin a different tag.
-HERMES_IMAGE=${HERMES_IMAGE:-ghcr.io/your-org/hermes:latest}
+# Use the UA-patched build (see infra/hermes-image/README.md), not raw upstream:
+# upstream's Telegram QR onboarding 502s without the User-Agent fix.
+HERMES_IMAGE=${HERMES_IMAGE:-ghcr.io/your-org/hermes:0.16.0-ua}
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run me as root (sudo bash infra/install.sh)" >&2
