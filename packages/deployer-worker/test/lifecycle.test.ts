@@ -58,10 +58,13 @@ vi.mock("../src/caddy", () => ({
 }));
 
 // --- secrets ---
+// readSecret now comes from the DB-backed module; buildAgentEnv stays in secrets.
 const readSecretMock = vi.fn();
 const buildAgentEnvMock = vi.fn();
-vi.mock("../src/secrets", () => ({
+vi.mock("../src/db-secrets", () => ({
   readSecret: (...a: unknown[]) => readSecretMock(...a),
+}));
+vi.mock("../src/secrets", () => ({
   buildAgentEnv: (...a: unknown[]) => buildAgentEnvMock(...a),
 }));
 

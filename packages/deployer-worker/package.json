@@ -11,6 +11,7 @@
     "./config": "./src/config.ts",
     "./db": "./src/db.ts",
     "./secrets": "./src/secrets.ts",
+    "./db-secrets": "./src/db-secrets.ts",
     "./ws-auth": "./src/ws-auth.ts"
   },
   "scripts": {

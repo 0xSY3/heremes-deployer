@@ -27,7 +27,11 @@ model Agent {
   errorMessage  String?
 
   llmProvider   String                          // "openrouter" | "anthropic"
-  secretRef     String                          // pointer to the LLM key (spec §5), NOT the key
+  secretRef     String                          // legacy pointer (age/disk design); empty in DB-secret mode
+  // AES-256-GCM ciphertext of the per-agent secret env, encrypted with
+  // SECRET_ENC_KEY. Stored here so the Vercel API (writer) and the worker
+  // (reader) share secrets over RDS — no `age` binary or shared disk needed.
+  secretBlob    String?  @db.Text
   personalityId String?
 
   apiPort       Int?                            // host port -> container 8642

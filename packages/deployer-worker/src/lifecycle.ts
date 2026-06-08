@@ -14,7 +14,8 @@ import { config, paths, HERMES_UID, HERMES_GID } from "./config";
 import { allocatePort, releasePort } from "./ports";
 import { runContainer, stopAndRemove, waitForHealth } from "./docker";
 import { addRoute, removeRoute } from "./caddy";
-import { readSecret, buildAgentEnv } from "./secrets";
+import { readSecret } from "./db-secrets";
+import { buildAgentEnv } from "./secrets";
 import { startTailer, stopTailer, appendSystemLog } from "./logs";
 import { emitStep, emitReady, emitDone, type StepName } from "./events";
 
