@@ -8,5 +8,11 @@
     "dev": "pnpm --filter @hermes/web dev",
     "provision": "pnpm --filter @hermes/provisioner provision",
     "teardown": "pnpm --filter @hermes/provisioner teardown"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "prisma"
+    ]
   }
 }
