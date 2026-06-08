@@ -62,6 +62,66 @@ function buildHostUrl(slug: string, dashboardPort: number): string {
 }
 
 /**
+ * Lock down the per-agent HERMES_HOME bind dir so only the worker and the
+ * container's uid can read its credentials (bot token in /opt/data/.env,
+ * session files). World access is never granted. See the call site for the
+ * threat model and the three ownership tiers.
+ *
+ * @throws if the worker can neither own the dir as HERMES_UID:GID nor place it
+ *   in HERMES_GID — the deploy must fail rather than ship an over-permissive
+ *   credential store.
+ */
+async function prepareDataDir(dataDir: string, agentId: string): Promise<void> {
+  // Docker Desktop dev escape: the VM maps bind uids, so ownership is moot and
+  // the strict tiers below would needlessly fail a non-root macOS worker. Never
+  // set on native-Linux prod (see config.skipDataDirChown).
+  if (config.skipDataDirChown) {
+    await appendSystemLog(
+      agentId,
+      `[worker] DEPLOYER_SKIP_DATADIR_CHOWN set: leaving ${dataDir} ownership as-is ` +
+        `(Docker Desktop dev only — do not use on native Linux)`,
+    ).catch(() => undefined);
+    return;
+  }
+
+  // Tier 1: root worker — own the dir as the container uid, owner-only perms.
+  try {
+    await chown(dataDir, HERMES_UID, HERMES_GID);
+    await chmod(dataDir, 0o700);
+    return;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "ENOSYS") throw e;
+  }
+
+  // Tier 2: non-root worker that is a member of HERMES_GID — a non-root user may
+  // chgrp to a group it belongs to. Group-owned + 0770 lets the container uid
+  // (sharing HERMES_GID) write while leaving the dir unreadable to others.
+  // chown(-1, gid) changes group only, preserving the current owner.
+  try {
+    await chown(dataDir, -1, HERMES_GID);
+    await chmod(dataDir, 0o770);
+    await appendSystemLog(
+      agentId,
+      `[worker] not root: set ${dataDir} group=${HERMES_GID} mode=0770 ` +
+        `(worker + container uid only; no world access)`,
+    ).catch(() => undefined);
+    return;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "ENOSYS") throw e;
+  }
+
+  // Tier 3: cannot secure the dir. Fail loudly — never widen permissions.
+  throw new Error(
+    `cannot prepare a secure data dir for the agent container: the worker is ` +
+      `not root and is not a member of HERMES_GID (${HERMES_GID}). Run the ` +
+      `worker as root, or add its user to gid ${HERMES_GID}, or pre-create ` +
+      `${dataDir} owned by ${HERMES_UID}:${HERMES_GID} with mode 0770.`,
+  );
+}
+
+/**
  * DB is the source of truth (spec §2): write Agent.status FIRST, then emit
  * the matching step frame. `state` lets the UI render a live checklist —
  * `started` when a step begins, `ok` when it completes.
@@ -180,25 +240,19 @@ export async function drive(agentId: string): Promise<void> {
     // if the host bind dir is writable by that uid. mkdir is idempotent so the
     // persisted bot token + sessions survive a redeploy.
     //
-    // chown to HERMES_UID:GID is the right answer and works when the worker runs
-    // as root (the production systemd unit). A non-root worker (local dev) can't
-    // chown and hits EPERM; fall back to world-writable so the container uid can
-    // still write. Both paths leave a dir the gateway can write — never fail the
-    // deploy over dir ownership.
+    // SECURITY: this dir stores the agent's Telegram bot token (/opt/data/.env)
+    // and session files. It must NEVER be world-readable. Three tiers, each
+    // strictly limiting access to the worker + the container uid:
+    //   1. root worker (prod systemd): chown uid:gid, perms 0700 — only the
+    //      container uid (== owner) can touch it.
+    //   2. non-root worker that belongs to HERMES_GID: set the dir's group to
+    //      HERMES_GID (a non-root user may chgrp to a group it is a member of)
+    //      and perms 0770 — worker user + container uid (via shared gid) only.
+    //   3. neither possible: fail the deploy with an operator-actionable error
+    //      rather than weaken permissions. No 0777 fallback ever.
     const dataDir = paths.agentData(agentId);
     await mkdir(dataDir, { recursive: true });
-    try {
-      await chown(dataDir, HERMES_UID, HERMES_GID);
-    } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
-      if (code !== "EPERM" && code !== "ENOSYS") throw e;
-      await chmod(dataDir, 0o777);
-      await appendSystemLog(
-        agentId,
-        `[worker] chown ${dataDir} -> ${HERMES_UID}:${HERMES_GID} failed (${code}); ` +
-          `worker is not root, fell back to world-writable mode 0777`,
-      ).catch(() => undefined);
-    }
+    await prepareDataDir(dataDir, agentId);
 
     containerId = await runContainer({
       agentId,

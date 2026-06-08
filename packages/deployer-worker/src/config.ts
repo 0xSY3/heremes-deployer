@@ -90,6 +90,14 @@ export const config = {
   // without a route. The container is still reachable at 127.0.0.1:<apiPort>.
   skipCaddy: boolEnv("DEPLOYER_SKIP_CADDY"),
 
+  // Local-dev escape hatch (DOCKER DESKTOP ONLY): skip chown/chmod of the
+  // per-agent /opt/data bind dir. On Docker Desktop the Linux VM maps bind-mount
+  // uids transparently, so the container writes regardless of host ownership and
+  // the strict tiers in prepareDataDir would otherwise fail the deploy (a macOS
+  // dev user is neither root nor in HERMES_GID). NEVER set this in production on
+  // native Linux — it leaves the credential dir at the worker's default perms.
+  skipDataDirChown: boolEnv("DEPLOYER_SKIP_DATADIR_CHOWN"),
+
   // Keep crashed container corpses for `docker inspect`/`docker logs` post-mortem
   // instead of sweeping them. Ports are still released so new deploys proceed.
   keepCrashedContainers: boolEnv("DEPLOYER_KEEP_CRASHED_CONTAINERS"),

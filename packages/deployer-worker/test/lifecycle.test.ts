@@ -13,8 +13,9 @@ vi.mock("../src/db", () => ({
 }));
 
 // --- config ---
+const configMock = { wildcardDomain: "agents.hermes.dev", skipCaddy: false, skipDataDirChown: false };
 vi.mock("../src/config", () => ({
-  config: { wildcardDomain: "agents.hermes.dev", skipCaddy: false },
+  config: configMock,
   paths: { agentData: (id: string) => `/data/agents/${id}/data` },
   HERMES_UID: 10000,
   HERMES_GID: 10000,
@@ -117,6 +118,7 @@ beforeEach(() => {
   mkdirMock.mockReset().mockResolvedValue(undefined);
   chownMock.mockReset().mockResolvedValue(undefined);
   chmodMock.mockReset().mockResolvedValue(undefined);
+  configMock.skipDataDirChown = false;
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -155,42 +157,75 @@ test("drive allocates two ports (api + dashboard) and runs the container with th
   expect(runArg.dataDir).toBe("/data/agents/agent-1/data");
 });
 
-test("drive prepares a writable HERMES_HOME bind owned by the gateway uid", async () => {
-  // #when driven
+test("root worker: owns the data dir as the gateway uid with owner-only 0700", async () => {
+  // #when driven (chown succeeds — worker is root)
   await drive("agent-1");
 
-  // #then the per-agent data dir is created and chowned to the image uid:gid
-  // before the container starts — otherwise /opt/data writes fail on the
-  // read-only rootfs and Telegram onboarding (and all runtime state) breaks
+  // #then the dir is created, chowned to the image uid:gid, locked to 0700 —
+  // otherwise /opt/data writes fail on the read-only rootfs and Telegram
+  // onboarding (and all runtime state) breaks
   expect(mkdirMock).toHaveBeenCalledWith("/data/agents/agent-1/data", {
     recursive: true,
   });
   expect(chownMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 10000, 10000);
+  expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o700);
 });
 
-test("a non-root worker (chown EPERM) falls back to world-writable, not a failed deploy", async () => {
-  // #given the worker can't chown (runs as a non-root user, e.g. local dev)
+test("non-root worker in HERMES_GID: chgrp + 0770, no world access, deploy proceeds", async () => {
+  // #given the worker can't take ownership (EPERM) but can set the group
   const eperm = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
-  chownMock.mockRejectedValueOnce(eperm);
+  chownMock.mockRejectedValueOnce(eperm).mockResolvedValueOnce(undefined);
 
   // #when driven
   await drive("agent-1");
 
-  // #then it chmods the dir world-writable and the deploy still reaches running
-  expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o777);
+  // #then it group-owns the dir (uid -1 = unchanged) and locks it to 0770 —
+  // worker + container uid only, never world-readable — and reaches running
+  expect(chownMock).toHaveBeenNthCalledWith(1, "/data/agents/agent-1/data", 10000, 10000);
+  expect(chownMock).toHaveBeenNthCalledWith(2, "/data/agents/agent-1/data", -1, 10000);
+  expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o770);
+  expect(chmodMock).not.toHaveBeenCalledWith("/data/agents/agent-1/data", 0o777);
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
+test("worker that can neither own nor chgrp the dir fails the deploy — never widens perms", async () => {
+  // #given both chown attempts are denied (not root, not in HERMES_GID)
+  const eperm = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+  chownMock.mockRejectedValue(eperm);
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then no permission is ever loosened and the deploy does not reach running
+  expect(chmodMock).not.toHaveBeenCalledWith("/data/agents/agent-1/data", 0o777);
+  expect(stepCalls).not.toContainEqual({ step: "running", state: "ok" });
+});
+
+test("DEPLOYER_SKIP_DATADIR_CHOWN skips chown/chmod entirely (Docker Desktop dev)", async () => {
+  // #given the dev escape flag is set
+  configMock.skipDataDirChown = true;
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then the dir is still created but ownership/perms are left untouched, and
+  // the deploy proceeds (the VM handles bind uid mapping)
+  expect(mkdirMock).toHaveBeenCalledWith("/data/agents/agent-1/data", { recursive: true });
+  expect(chownMock).not.toHaveBeenCalled();
+  expect(chmodMock).not.toHaveBeenCalled();
   expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
 });
 
 test("a non-EPERM chown error still fails the deploy (real fs problem)", async () => {
-  // #given chown fails for a reason other than missing root
+  // #given chown fails for a reason other than missing privilege
   const eio = Object.assign(new Error("io error"), { code: "EIO" });
   chownMock.mockRejectedValueOnce(eio);
 
   // #when driven
   await drive("agent-1");
 
-  // #then no world-writable fallback, and the deploy does not reach running
-  expect(chmodMock).not.toHaveBeenCalled();
+  // #then it does not attempt the group fallback and does not reach running
+  expect(chownMock).toHaveBeenCalledTimes(1);
   expect(stepCalls).not.toContainEqual({ step: "running", state: "ok" });
 });
 
