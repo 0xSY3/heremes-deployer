@@ -7,7 +7,7 @@
 //   - DB status is written FIRST, then emitStep — so a reconnecting socket
 //     can backfill the current step from the row (DB = source of truth).
 
-import { mkdir, chown } from "node:fs/promises";
+import { mkdir, chown, chmod } from "node:fs/promises";
 
 import { prisma } from "./db";
 import { config, paths, HERMES_UID, HERMES_GID } from "./config";
@@ -175,14 +175,30 @@ export async function drive(agentId: string): Promise<void> {
     });
 
     // Writable HERMES_HOME bind. The image runs as HERMES_UID:HERMES_GID and
-    // owns /opt/data as that uid, so the host dir must be chowned to match —
-    // otherwise the gateway (non-root) can't write its .env/config/sessions and
-    // the Telegram onboarding apply step (and every other runtime write) fails
-    // against the read-only rootfs. mkdir is idempotent across restarts so the
+    // owns /opt/data as that uid, so the gateway (non-root) can only write its
+    // .env/config/sessions — and complete the Telegram onboarding apply step —
+    // if the host bind dir is writable by that uid. mkdir is idempotent so the
     // persisted bot token + sessions survive a redeploy.
+    //
+    // chown to HERMES_UID:GID is the right answer and works when the worker runs
+    // as root (the production systemd unit). A non-root worker (local dev) can't
+    // chown and hits EPERM; fall back to world-writable so the container uid can
+    // still write. Both paths leave a dir the gateway can write — never fail the
+    // deploy over dir ownership.
     const dataDir = paths.agentData(agentId);
     await mkdir(dataDir, { recursive: true });
-    await chown(dataDir, HERMES_UID, HERMES_GID);
+    try {
+      await chown(dataDir, HERMES_UID, HERMES_GID);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "ENOSYS") throw e;
+      await chmod(dataDir, 0o777);
+      await appendSystemLog(
+        agentId,
+        `[worker] chown ${dataDir} -> ${HERMES_UID}:${HERMES_GID} failed (${code}); ` +
+          `worker is not root, fell back to world-writable mode 0777`,
+      ).catch(() => undefined);
+    }
 
     containerId = await runContainer({
       agentId,

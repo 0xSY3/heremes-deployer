@@ -23,9 +23,11 @@ vi.mock("../src/config", () => ({
 // --- fs (the writable HERMES_HOME bind is mkdir'd + chown'd before run) ---
 const mkdirMock = vi.fn();
 const chownMock = vi.fn();
+const chmodMock = vi.fn();
 vi.mock("node:fs/promises", () => ({
   mkdir: (...a: unknown[]) => mkdirMock(...a),
   chown: (...a: unknown[]) => chownMock(...a),
+  chmod: (...a: unknown[]) => chmodMock(...a),
 }));
 
 // --- ports ---
@@ -114,6 +116,7 @@ beforeEach(() => {
   emitDoneMock.mockReset();
   mkdirMock.mockReset().mockResolvedValue(undefined);
   chownMock.mockReset().mockResolvedValue(undefined);
+  chmodMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -163,6 +166,32 @@ test("drive prepares a writable HERMES_HOME bind owned by the gateway uid", asyn
     recursive: true,
   });
   expect(chownMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 10000, 10000);
+});
+
+test("a non-root worker (chown EPERM) falls back to world-writable, not a failed deploy", async () => {
+  // #given the worker can't chown (runs as a non-root user, e.g. local dev)
+  const eperm = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+  chownMock.mockRejectedValueOnce(eperm);
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then it chmods the dir world-writable and the deploy still reaches running
+  expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o777);
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
+test("a non-EPERM chown error still fails the deploy (real fs problem)", async () => {
+  // #given chown fails for a reason other than missing root
+  const eio = Object.assign(new Error("io error"), { code: "EIO" });
+  chownMock.mockRejectedValueOnce(eio);
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then no world-writable fallback, and the deploy does not reach running
+  expect(chmodMock).not.toHaveBeenCalled();
+  expect(stepCalls).not.toContainEqual({ step: "running", state: "ok" });
 });
 
 test("drive registers the Caddy route to the dashboard port and emits ready", async () => {
