@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { getPersonality } from "@hermes/provisioner/presets";
 
-import { config as cfg } from "./config";
+import { config as cfg, HERMES_UID, HERMES_GID } from "./config";
 
 interface AgeResult {
   stdout: Buffer;
@@ -212,7 +212,10 @@ export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
     [keyName]: llmKey,
     API_SERVER_ENABLED: "true",
     API_SERVER_HOST: "0.0.0.0",
-    HERMES_UID: "10000",
+    // Drop the gateway to this uid:gid (official compose sets both). Must match
+    // the owner of the host data bind so /opt/data is writable; see lifecycle.
+    HERMES_UID: String(HERMES_UID),
+    HERMES_GID: String(HERMES_GID),
     // Pin a model that works with any OpenRouter key; the image default
     // (minimax) 404s without a data-policy toggle.
     HERMES_MODEL: cfg.defaultModel,

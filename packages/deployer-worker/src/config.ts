@@ -116,10 +116,21 @@ if (config.portMin >= config.portMax) {
   );
 }
 
-// Paths derived from dataRoot. No `blobs`/`keys`/`work` (no upload): only the
-// age-encrypted per-agent secrets live under dataRoot (spec §5).
+// Paths derived from dataRoot. The age-encrypted per-agent secrets live under
+// dataRoot/secrets (spec §5); each agent also gets a writable data dir bound
+// into the container at HERMES_HOME=/opt/data — the gateway writes its .env
+// (bot tokens), config.yaml, gateway_state.json, sessions/, and logs/ there.
+// Without it the read-only rootfs blocks every runtime write (e.g. the Telegram
+// onboarding apply step that persists TELEGRAM_BOT_TOKEN to /opt/data/.env).
 export const paths = {
   secrets: `${config.dataRoot}/secrets`,
+  agentData: (agentId: string): string => `${config.dataRoot}/agents/${agentId}/data`,
 };
+
+// The image runs the gateway as this uid:gid (Dockerfile HERMES_UID/GID, default
+// 10000) and owns /opt/data as 10000:10000. The host-side bind dir must be
+// writable by that uid, so the worker chowns it to these values before start.
+export const HERMES_UID = numberEnv("HERMES_UID", 10000);
+export const HERMES_GID = numberEnv("HERMES_GID", 10000);
 
 export type Config = typeof config;

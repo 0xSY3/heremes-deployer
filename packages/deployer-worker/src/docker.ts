@@ -123,6 +123,14 @@ export interface RunContainerOpts {
   apiPort: number;
   /** Host port bound to the container's dashboard port (9119). */
   dashboardPort: number;
+  /**
+   * Host directory bind-mounted at HERMES_HOME (/opt/data). The gateway writes
+   * its .env, config.yaml, gateway_state.json, sessions/, and logs/ here. The
+   * caller must mkdir it and chown it to HERMES_UID:HERMES_GID before start —
+   * the rootfs is read-only, so this bind is the only writable runtime path
+   * besides the /tmp and /run tmpfs.
+   */
+  dataDir: string;
 }
 
 /**
@@ -160,6 +168,10 @@ export async function runContainer(opts: RunContainerOpts): Promise<string> {
       [`${DASHBOARD_PORT}/tcp`]: {},
     },
     HostConfig: {
+      // Persistent per-agent data bound at HERMES_HOME. Survives restart/redeploy
+      // (the bot token + sessions outlive the container), and is the one writable
+      // path on the read-only rootfs that the gateway needs for runtime state.
+      Binds: [`${opts.dataDir}:/opt/data:rw`],
       PortBindings: {
         [`${API_PORT}/tcp`]: [
           { HostIp: "127.0.0.1", HostPort: String(opts.apiPort) },

@@ -15,6 +15,17 @@ vi.mock("../src/db", () => ({
 // --- config ---
 vi.mock("../src/config", () => ({
   config: { wildcardDomain: "agents.hermes.dev", skipCaddy: false },
+  paths: { agentData: (id: string) => `/data/agents/${id}/data` },
+  HERMES_UID: 10000,
+  HERMES_GID: 10000,
+}));
+
+// --- fs (the writable HERMES_HOME bind is mkdir'd + chown'd before run) ---
+const mkdirMock = vi.fn();
+const chownMock = vi.fn();
+vi.mock("node:fs/promises", () => ({
+  mkdir: (...a: unknown[]) => mkdirMock(...a),
+  chown: (...a: unknown[]) => chownMock(...a),
 }));
 
 // --- ports ---
@@ -101,6 +112,8 @@ beforeEach(() => {
   appendSystemLogMock.mockReset().mockResolvedValue(undefined);
   emitReadyMock.mockReset();
   emitDoneMock.mockReset();
+  mkdirMock.mockReset().mockResolvedValue(undefined);
+  chownMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -132,9 +145,24 @@ test("drive allocates two ports (api + dashboard) and runs the container with th
   const runArg = runContainerMock.mock.calls[0]?.[0] as {
     apiPort: number;
     dashboardPort: number;
+    dataDir: string;
   };
   expect(runArg.apiPort).toBe(8001);
   expect(runArg.dashboardPort).toBe(9001);
+  expect(runArg.dataDir).toBe("/data/agents/agent-1/data");
+});
+
+test("drive prepares a writable HERMES_HOME bind owned by the gateway uid", async () => {
+  // #when driven
+  await drive("agent-1");
+
+  // #then the per-agent data dir is created and chowned to the image uid:gid
+  // before the container starts — otherwise /opt/data writes fail on the
+  // read-only rootfs and Telegram onboarding (and all runtime state) breaks
+  expect(mkdirMock).toHaveBeenCalledWith("/data/agents/agent-1/data", {
+    recursive: true,
+  });
+  expect(chownMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 10000, 10000);
 });
 
 test("drive registers the Caddy route to the dashboard port and emits ready", async () => {

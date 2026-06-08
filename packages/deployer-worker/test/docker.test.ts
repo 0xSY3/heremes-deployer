@@ -123,7 +123,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("runContainer builds the Hermes createContainer arg object (no binds, two loopback ports)", async () => {
+test("runContainer builds the Hermes createContainer arg object (data bind, two loopback ports)", async () => {
   const start = vi.fn().mockResolvedValue(undefined);
   const createContainer = vi
     .spyOn(docker, "createContainer")
@@ -135,6 +135,7 @@ test("runContainer builds the Hermes createContainer arg object (no binds, two l
     env: { API_SERVER_KEY: "secret-key", OPENROUTER_API_KEY: "sk-or-xxx", API_SERVER_ENABLED: "true" },
     apiPort: 13000,
     dashboardPort: 13001,
+    dataDir: "/var/lib/hermes-deployer/agents/agent-1/data",
   });
 
   expect(id).toBe("deadbeefcafe0000");
@@ -169,7 +170,11 @@ test("runContainer builds the Hermes createContainer arg object (no binds, two l
     "/run": "rw,exec,size=512m",
   });
   expect(hostConfig.SecurityOpt).toEqual(["no-new-privileges"]);
-  expect(hostConfig.Binds).toBeUndefined();
+  // Writable HERMES_HOME bind — the one rw path on the read-only rootfs that the
+  // gateway needs for its .env (bot tokens), config, and sessions.
+  expect(hostConfig.Binds).toEqual([
+    "/var/lib/hermes-deployer/agents/agent-1/data:/opt/data:rw",
+  ]);
 });
 
 test("runContainer never surfaces env or argv in the error — only the daemon message", async () => {
@@ -184,6 +189,7 @@ test("runContainer never surfaces env or argv in the error — only the daemon m
       env: { OPENROUTER_API_KEY: "sk-or-SUPER-SECRET" },
       apiPort: 13000,
       dashboardPort: 13001,
+      dataDir: "/var/lib/hermes-deployer/agents/agent-1/data",
     });
   } catch (e) {
     caught = e;

@@ -112,6 +112,7 @@ describe("buildAgentEnv", () => {
     expect(env.API_SERVER_ENABLED).toBe("true");
     expect(env.API_SERVER_HOST).toBe("0.0.0.0");
     expect(env.HERMES_UID).toBe("10000");
+    expect(env.HERMES_GID).toBe("10000");
     expect(env.HERMES_DASHBOARD).toBe("1");
     expect(env.HERMES_DASHBOARD_HOST).toBe("0.0.0.0");
     expect(env.HERMES_DASHBOARD_TUI).toBe("1");

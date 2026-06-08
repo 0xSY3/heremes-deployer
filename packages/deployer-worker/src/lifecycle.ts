@@ -7,8 +7,10 @@
 //   - DB status is written FIRST, then emitStep — so a reconnecting socket
 //     can backfill the current step from the row (DB = source of truth).
 
+import { mkdir, chown } from "node:fs/promises";
+
 import { prisma } from "./db";
-import { config } from "./config";
+import { config, paths, HERMES_UID, HERMES_GID } from "./config";
 import { allocatePort, releasePort } from "./ports";
 import { runContainer, stopAndRemove, waitForHealth } from "./docker";
 import { addRoute, removeRoute } from "./caddy";
@@ -171,12 +173,24 @@ export async function drive(agentId: string): Promise<void> {
       llmProvider: agent.llmProvider as "openrouter" | "anthropic",
       ...(agent.personalityId ? { personalityId: agent.personalityId } : {}),
     });
+
+    // Writable HERMES_HOME bind. The image runs as HERMES_UID:HERMES_GID and
+    // owns /opt/data as that uid, so the host dir must be chowned to match —
+    // otherwise the gateway (non-root) can't write its .env/config/sessions and
+    // the Telegram onboarding apply step (and every other runtime write) fails
+    // against the read-only rootfs. mkdir is idempotent across restarts so the
+    // persisted bot token + sessions survive a redeploy.
+    const dataDir = paths.agentData(agentId);
+    await mkdir(dataDir, { recursive: true });
+    await chown(dataDir, HERMES_UID, HERMES_GID);
+
     containerId = await runContainer({
       agentId,
       apiPort,
       dashboardPort,
       image: config.hermesImage,
       env,
+      dataDir,
     });
     await prisma.agent.update({
       where: { id: agentId },
