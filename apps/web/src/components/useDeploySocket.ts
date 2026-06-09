@@ -2,9 +2,11 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
+  DEPLOY_STEPS,
   initialDeployState,
   reduceFrame,
   type DeployState,
+  type DeployStep,
   type Frame,
 } from "@/lib/deploy-frames";
 
@@ -19,7 +21,7 @@ function deployUrl(agentId: string, token: string): string {
   return `${proto}://${window.location.host}/v1/agents/${agentId}/deploy?token=${encodeURIComponent(token)}`;
 }
 
-const POLL_MS = 3000;
+const POLL_MS = 1500;
 
 export function useDeploySocket(agentId: string, wsToken: string): DeployState {
   const [state, dispatch] = useReducer(reduceFrame, undefined, initialDeployState);
@@ -39,15 +41,36 @@ export function useDeploySocket(agentId: string, wsToken: string): DeployState {
       if (pollTimer || closed) return;
       // Socket fallback: poll the row status until terminal so the view still
       // advances if the WS drops (spec §2 — "falling back to the row status").
+      // The deploy steps are an ordered prefix of the status values, so we can
+      // synthesize step frames from the polled status: every step before the
+      // current one is `ok`, the current one is `started`. This animates the
+      // checklist on the polling path too (cross-origin WSS from Vercel to the
+      // worker is unreliable, so polling is the common case in prod).
       pollTimer = setInterval(async () => {
         try {
           const res = await fetch(`/api/agents/${agentId}`);
           if (!res.ok) return;
           const { agent } = await res.json();
-          dispatch({ type: "hello", status: agent.status } as Frame);
-          if (["failed", "stopped", "crashed", "running"].includes(agent.status)) {
+          const status = agent.status as string;
+
+          const idx = DEPLOY_STEPS.indexOf(status as DeployStep);
+          if (idx >= 0) {
+            for (let i = 0; i < idx; i++) {
+              dispatch({ type: "step", step: DEPLOY_STEPS[i], state: "ok" } as Frame);
+            }
+            dispatch({ type: "step", step: DEPLOY_STEPS[idx], state: "started" } as Frame);
+          }
+          dispatch({ type: "hello", status } as Frame);
+
+          if (["failed", "stopped", "crashed", "running"].includes(status)) {
+            if (status === "running") {
+              // Mark every step ok so the checklist reads complete.
+              for (const s of DEPLOY_STEPS) {
+                dispatch({ type: "step", step: s, state: "ok" } as Frame);
+              }
+            }
             if (agent.hostUrl) dispatch({ type: "ready", url: agent.hostUrl } as Frame);
-            dispatch({ type: "done", status: agent.status } as Frame);
+            dispatch({ type: "done", status } as Frame);
             if (pollTimer) clearInterval(pollTimer);
           }
         } catch {
@@ -55,6 +78,13 @@ export function useDeploySocket(agentId: string, wsToken: string): DeployState {
         }
       }, POLL_MS);
     }
+
+    // Always poll: it drives the checklist animation on its own and is the
+    // reliable path in prod (cross-origin WSS from the Vercel frontend to the
+    // worker often never connects, with no error event — so we can't wait for
+    // ws.onerror to start polling). The WS, when it does connect, simply
+    // delivers the same frames a beat sooner; reduceFrame is order-tolerant.
+    startPolling();
 
     try {
       ws = new WebSocket(deployUrl(agentId, wsToken));
@@ -66,12 +96,8 @@ export function useDeploySocket(agentId: string, wsToken: string): DeployState {
           // ignore non-JSON
         }
       };
-      ws.onerror = () => startPolling();
-      ws.onclose = () => {
-        if (!stateRef.current.terminal) startPolling();
-      };
     } catch {
-      startPolling();
+      // polling already running
     }
 
     return () => {
