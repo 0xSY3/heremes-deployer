@@ -62,6 +62,30 @@ describe("config defaults", () => {
     expect(config.skipCaddy).toBe(true);
     expect(config.keepCrashedContainers).toBe(true);
   });
+
+  it("resolves the public host from HERMES_DOMAIN (canonical, matches Caddyfile)", async () => {
+    // #given the prod env only sets HERMES_DOMAIN
+    freshEnv({ HERMES_DOMAIN: "deployer.acme.com" });
+    // #when config loads
+    const { config } = await import("../src/config");
+    // #then the worker builds agent URLs on that host, not the bogus default
+    expect(config.wildcardDomain).toBe("deployer.acme.com");
+  });
+
+  it("prefers HERMES_DOMAIN over the legacy DEPLOYER_WILDCARD_DOMAIN alias", async () => {
+    freshEnv({
+      HERMES_DOMAIN: "deployer.acme.com",
+      DEPLOYER_WILDCARD_DOMAIN: "legacy.example.com",
+    });
+    const { config } = await import("../src/config");
+    expect(config.wildcardDomain).toBe("deployer.acme.com");
+  });
+
+  it("falls back to the legacy alias when HERMES_DOMAIN is unset", async () => {
+    freshEnv({ DEPLOYER_WILDCARD_DOMAIN: "legacy.example.com" });
+    const { config } = await import("../src/config");
+    expect(config.wildcardDomain).toBe("legacy.example.com");
+  });
 });
 
 describe("config boot guards", () => {
