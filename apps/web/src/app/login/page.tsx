@@ -27,11 +27,11 @@ export default async function LoginPage() {
         </div>
         
         <h1 className="font-display max-w-4xl text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight text-foreground uppercase leading-[1.05] mb-6">
-          THE AGENT THAT<br />GROWS WITH YOU.
+          ONE CLICK HERMES<br />AGENT DEPLOYER.
         </h1>
 
         <p className="max-w-xl text-[17px] leading-relaxed text-muted mb-12">
-          Connect your API keys to isolated, containerized Hermes instances. An autonomous agent that lives on your server, remembers what it learns, and gets more capable the longer it runs.
+          Deploy a fully-managed, isolated Hermes agent in seconds. Connect your API keys and let us handle the infrastructure while your autonomous agent securely learns and grows more capable over time.
         </p>
 
         <div className="w-full max-w-xl text-left">
