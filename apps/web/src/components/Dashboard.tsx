@@ -25,9 +25,6 @@ export function Dashboard({
   const activeCount = agents.filter((agent) =>
     ["queued", "allocating_ports", "starting", "health_checking", "registering_route"].includes(agent.status),
   ).length;
-  const failedCount = agents.filter((agent) =>
-    ["failed", "crashed", "unhealthy"].includes(agent.status),
-  ).length;
 
   // Ref lets the stable polling interval read the latest list without being a
   // dependency, which would re-subscribe every render.
@@ -123,143 +120,94 @@ export function Dashboard({
   }
 
   return (
-    <main className="relative z-10 min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <nav className="rise flex flex-wrap items-center justify-between gap-4 rounded-xl border border-panel-edge bg-ink-2/70 px-5 py-3.5 backdrop-blur">
-          <BrandMark sublabel="Hermes Deployer" />
+    <main className="relative z-10 flex h-screen w-full flex-col overflow-hidden bg-ink text-parchment">
+      {/* Subtle ambient glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-accent/10 blur-[120px] rounded-full pointer-events-none" />
+
+      <div className="mx-auto flex h-full w-full max-w-6xl flex-col px-6 py-6 lg:px-8 relative z-10">
+        <nav className="flex items-center justify-between mb-8 shrink-0">
+          <BrandMark sublabel="by Zynd" />
           <div className="flex items-center gap-4">
-            <span className="hidden items-center gap-2 text-sm text-muted sm:flex">
-              <span className="grid h-7 w-7 place-items-center rounded-full border border-panel-edge-2 bg-panel text-xs font-semibold text-accent-bright">
+            <div className="hidden sm:flex items-center gap-2 pr-4 border-r border-panel-edge">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
                 {userName.slice(0, 1).toUpperCase()}
-              </span>
-              {userName}
-            </span>
+              </div>
+              <span className="text-sm font-medium text-white/80">{userName}</span>
+            </div>
             <SignOutButton />
           </div>
         </nav>
 
-        <section
-          className="rise relative mt-6 overflow-hidden rounded-2xl border border-panel-edge bg-panel/70 backdrop-blur"
-          style={{ animationDelay: "60ms" }}
-        >
-          <div className="grid gap-0 lg:grid-cols-[1.45fr_1fr]">
-            <div className="p-6 sm:p-9 lg:p-11">
-              <span className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-bright">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-bright opacity-60" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-bright" />
-                </span>
-                One-click deployer
-              </span>
-
-              <h1 className="font-display display-fill mt-6 max-w-2xl text-5xl sm:text-[3.75rem]">
-                Launch private Hermes agents from one clean control room
-              </h1>
-
-              <p className="mt-5 max-w-xl text-[15px] leading-7 text-muted">
-                Paste a provider key, start an isolated container, follow live deployment progress,
-                and open the running dashboard without touching the server.
-              </p>
-
-              <div className="mt-8 flex flex-wrap items-center gap-4">
-                <button
-                  onClick={() => setModalOpen(true)}
-                  disabled={atLimit}
-                  title={atLimit ? `Limit reached (${maxAgents} per account)` : undefined}
-                  className="group inline-flex h-12 items-center gap-2 rounded-lg bg-accent px-6 text-sm font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Deploy Hermes
-                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
-                </button>
-                <SlotsMeter used={agents.length} max={maxAgents} />
-              </div>
-
-              {atLimit && agents.length > 0 && (
-                <p className="mt-4 text-sm text-amber">
-                  Limit reached. Clean up or stop an agent before creating another.
-                </p>
-              )}
-              {actionError && <p className="mt-4 text-sm text-red">{actionError}</p>}
-            </div>
-
-            <aside className="border-t border-panel-edge bg-ink-2/50 p-6 sm:p-7 lg:border-l lg:border-t-0">
-              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-2">
-                Fleet status
-              </p>
-              <div className="flex flex-col gap-3">
-                <Metric label="Running" value={runningCount} tone="green" detail="Ready to open" />
-                <Metric label="Deploying" value={activeCount} tone="accent" detail="In progress" />
-                <Metric label="Attention" value={failedCount} tone="red" detail="Needs review" />
-              </div>
-            </aside>
-          </div>
-        </section>
-
-        <section className="mt-8">
-          <div className="mb-4 flex items-end justify-between gap-4">
+        {/* Main Content Area */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Header & Metrics row */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8 shrink-0">
             <div>
-              <h2 className="font-display text-2xl uppercase tracking-wide text-parchment">Agents</h2>
-              <p className="mt-1 text-sm text-muted">
-                {agents.length === 0 ? "No deployments yet" : "Current deployments and controls"}
-              </p>
+              <h1 className="font-display text-4xl uppercase tracking-wider text-white">Hermes Deployer</h1>
+              <p className="text-sm text-muted-2 mt-1">Manage your private AI agents and deployments.</p>
+            </div>
+            
+            <div className="flex items-center gap-6 rounded-lg border border-white/5 bg-white/5 px-5 py-2.5">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green" />
+                <span className="text-sm font-medium text-white">{runningCount} <span className="text-muted-2">Active</span></span>
+              </div>
+              <div className="w-px h-4 bg-white/10" />
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-accent-bright" />
+                <span className="text-sm font-medium text-white">{activeCount} <span className="text-muted-2">Transit</span></span>
+              </div>
+              <div className="w-px h-4 bg-white/10" />
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-white/20" />
+                <span className="text-sm font-medium text-white">{agents.length}/{maxAgents} <span className="text-muted-2">Slots</span></span>
+              </div>
             </div>
           </div>
 
-          {agents.length === 0 ? (
-            <div
-              className="rise grid overflow-hidden rounded-2xl border border-panel-edge bg-panel/60 backdrop-blur lg:grid-cols-[1fr_1.1fr]"
-              style={{ animationDelay: "120ms" }}
-            >
-              <div className="p-6 sm:p-9">
-                <div className="grid h-12 w-12 place-items-center rounded-xl border border-accent/25 bg-accent/10 text-2xl text-accent-bright">
-                  ⚕
-                </div>
-                <h3 className="font-display mt-6 text-3xl uppercase tracking-wide text-parchment">
-                  Deploy your first Hermes agent
-                </h3>
-                <p className="mt-3 max-w-lg text-sm leading-6 text-muted">
-                  The deploy form is pre-filled with a valid agent name. Add your OpenRouter or
-                  Anthropic key and the worker handles ports, secrets, container boot, health checks,
-                  routes, and logs.
-                </p>
-                <button
-                  onClick={() => setModalOpen(true)}
-                  className="group mt-7 inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-dim"
-                >
-                  Start deployment
-                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
-                </button>
-              </div>
-
-              <div className="border-t border-panel-edge bg-ink-2/40 p-6 sm:p-7 lg:border-l lg:border-t-0">
-                <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-2">
-                  What the worker handles
-                </p>
-                <div className="grid gap-2.5 sm:grid-cols-2">
-                  <FlowRow label="Queue" value="instant" />
-                  <FlowRow label="Secrets" value="encrypted" />
-                  <FlowRow label="Container" value="isolated" />
-                  <FlowRow label="Dashboard" value="live URL" />
-                  <FlowRow label="Health" value="checked" />
-                  <FlowRow label="Logs" value="streamed" />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {agents.map((a, i) => (
-                <div key={a.id} className="rise" style={{ animationDelay: `${i * 50}ms` }}>
-                  <AgentCard
-                    agent={a}
-                    onDelete={onDelete}
-                    onUpdate={onAgentUpdate}
-                    deleting={deleting === a.id}
-                  />
-                </div>
-              ))}
+          {actionError && (
+            <div className="mb-6 shrink-0 inline-flex items-center gap-3 rounded-full bg-red/10 border border-red/20 px-4 py-2 text-sm text-red font-medium">
+              {actionError}
             </div>
           )}
-        </section>
+
+          {/* Agents List Area */}
+          <div className="flex-1 flex flex-col min-h-0 pb-8">
+            {agents.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-center rounded-2xl border border-panel-edge border-dashed bg-panel-2/20">
+                <h3 className="font-display text-2xl uppercase tracking-wide text-white mb-2">No Deployments Found</h3>
+                <p className="max-w-sm text-sm text-muted-2 mb-8">
+                  Connect your API keys to spin up a secure, containerized Hermes agent instantly.
+                </p>
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="inline-flex h-12 items-center justify-center gap-3 rounded-full bg-white px-8 text-sm font-bold text-ink transition-all hover:bg-gray hover:scale-[1.02]"
+                >
+                  Start First Deployment
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col h-full gap-4">
+                <div className="flex items-center justify-between mb-2 shrink-0">
+                  <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-2">Your Fleet</h2>
+                  {!atLimit && (
+                    <button
+                      onClick={() => setModalOpen(true)}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-panel-2 border border-panel-edge px-5 text-xs font-bold text-white transition-all hover:bg-panel"
+                    >
+                      + Deploy New
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col flex-1 min-h-0 mt-4">
+                  {agents.map((a) => (
+                    <AgentCard key={a.id} agent={a} onDelete={onDelete} onUpdate={onAgentUpdate} deleting={deleting === a.id} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {modalOpen && (
@@ -275,55 +223,4 @@ export function Dashboard({
   );
 }
 
-function SlotsMeter({ used, max }: { used: number; max: number }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <div className="flex gap-1">
-        {Array.from({ length: max }).map((_, i) => (
-          <span
-            key={i}
-            className={`h-1.5 w-5 rounded-full ${i < used ? "bg-accent-bright" : "bg-panel-edge-2"}`}
-          />
-        ))}
-      </div>
-      <span className="text-sm text-muted">
-        {used}/{max} slots
-      </span>
-    </div>
-  );
-}
 
-function Metric({
-  label,
-  value,
-  tone,
-  detail,
-}: {
-  label: string;
-  value: number;
-  tone: "green" | "accent" | "red";
-  detail: string;
-}) {
-  const toneClass =
-    tone === "green" ? "text-green" : tone === "red" ? "text-red" : "text-accent-bright";
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-panel-edge bg-panel-2/60 px-4 py-3.5 transition hover:border-panel-edge-2">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
-        <p className="mt-0.5 text-xs text-muted-2">{detail}</p>
-      </div>
-      <p className={`font-display text-3xl leading-none ${toneClass}`}>{value}</p>
-    </div>
-  );
-}
-
-function FlowRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-panel-edge bg-panel-2/50 px-4 py-3">
-      <span className="text-sm font-medium text-parchment">{label}</span>
-      <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-accent-bright">
-        {value}
-      </span>
-    </div>
-  );
-}

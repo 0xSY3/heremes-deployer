@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StatusBadge } from "./StatusBadge";
-import { LogsModal } from "./LogsModal";
 import type { AgentView } from "./types";
 
 type Action = "start" | "stop" | "restart";
@@ -26,9 +25,9 @@ export function AgentCard({
   deleting: boolean;
 }) {
   const [busy, setBusy] = useState<Action | null>(null);
-  const [logsOpen, setLogsOpen] = useState(false);
   const running = agent.status === "running";
   const stopped = agent.status === "stopped";
+  const unhealthy = agent.status === "unhealthy";
 
   async function control(action: Action) {
     setBusy(action);
@@ -52,96 +51,119 @@ export function AgentCard({
   }
 
   return (
-    <div
-      className={`group relative flex min-h-56 flex-col justify-between overflow-hidden rounded-2xl border border-panel-edge bg-panel/80 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/45 ${
-        running ? "glow-live" : ""
-      }`}
-    >
-      {/* Accent top hairline lights up on hover, like the zynd cards. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-accent/0 to-transparent transition group-hover:via-accent/60" />
-
-      <div>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="font-display truncate text-lg leading-tight text-parchment">
+    <div className="flex w-full h-full flex-col gap-6 py-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 shrink-0">
+        <div>
+          <div className="flex items-center gap-4">
+            <h3 className="font-display text-3xl tracking-wide text-white uppercase">
               {agent.name}
             </h3>
-            <p className="mt-1 truncate font-mono text-xs text-muted">{agent.slug}</p>
+            <StatusBadge status={agent.status} />
           </div>
-          <span
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-accent/25 bg-accent/10 text-base text-accent-bright"
-            title="Hermes agent"
-          >
-            ⚕
-          </span>
+          <p className="mt-2 font-mono text-sm text-muted-2">ID: {agent.slug}</p>
         </div>
 
-        <div className="mt-3">
-          <StatusBadge status={agent.status} />
-        </div>
-
-        {running && agent.hostUrl && (
-          <a
-            href={agent.hostUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 block truncate rounded-lg border border-panel-edge bg-ink-2 px-3 py-2 font-mono text-xs text-accent-bright transition hover:border-accent/45"
-          >
-            {agent.hostUrl}
-          </a>
-        )}
-        {stopped && (
-          <p className="mt-4 rounded-lg border border-panel-edge bg-ink-2 px-3 py-2 text-sm text-muted">
-            {WORKER_ENABLED ? "Stopped. Start it again to chat." : "Stopped."}
-          </p>
-        )}
-        {!WORKER_ENABLED && (running || stopped) && (
-          <p className="mt-3 rounded-lg border border-amber/25 bg-amber/10 px-3 py-2 text-xs leading-5 text-amber">
-            Lifecycle controls need a running deployer-worker. Provisioning is unavailable here.
-          </p>
-        )}
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-panel-edge pt-4">
-        {running && agent.hostUrl && (
-          <a
-            href={agent.hostUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="group/open inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-accent/30 transition hover:bg-accent-dim"
-          >
-            Open
-            <span className="transition-transform group-hover/open:translate-x-0.5">↗</span>
-          </a>
-        )}
-        {WORKER_ENABLED && stopped && (
-          <ActionButton label="Start" busyLabel="starting…" active={busy === "start"} disabled={!!busy} onClick={() => control("start")} primary />
-        )}
-        {WORKER_ENABLED && running && (
-          <>
-            <ActionButton label="Restart" busyLabel="restarting…" active={busy === "restart"} disabled={!!busy} onClick={() => control("restart")} />
-            <ActionButton label="Stop" busyLabel="stopping…" active={busy === "stop"} disabled={!!busy} onClick={() => control("stop")} />
-          </>
-        )}
-        {(running || stopped) && (
+        <div className="flex flex-wrap items-center gap-3">
+          {WORKER_ENABLED && stopped && (
+            <ActionButton label="Start" busyLabel="starting…" active={busy === "start"} disabled={!!busy} onClick={() => control("start")} primary />
+          )}
+          {WORKER_ENABLED && running && (
+            <>
+              <ActionButton label="Restart" busyLabel="restarting…" active={busy === "restart"} disabled={!!busy} onClick={() => control("restart")} />
+              <ActionButton label="Stop" busyLabel="stopping…" active={busy === "stop"} disabled={!!busy} onClick={() => control("stop")} />
+            </>
+          )}
+          
           <button
-            onClick={() => setLogsOpen(true)}
-            className="rounded-lg border border-panel-edge-2 bg-panel-2 px-3 py-2 text-xs font-medium text-parchment transition-colors hover:border-accent/50 hover:text-accent-bright"
+            onClick={() => onDelete(agent.id)}
+            disabled={deleting || !!busy}
+            title="Delete this agent"
+            className="rounded-lg bg-red/10 px-4 py-2.5 text-xs font-semibold text-red transition hover:bg-red/20 disabled:opacity-40"
           >
-            Logs
+            {deleting ? "deleting…" : "Delete Agent"}
           </button>
-        )}
-        <button
-          onClick={() => onDelete(agent.id)}
-          disabled={deleting || !!busy}
-          title="Delete this agent"
-          className="ml-auto rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-xs font-medium text-red/90 transition-colors hover:border-red/60 hover:bg-red/15 hover:text-red disabled:opacity-40"
-        >
-          {deleting ? "deleting…" : "Delete"}
-        </button>
+        </div>
       </div>
 
-      {logsOpen && <LogsModal agentId={agent.id} name={agent.name} onClose={() => setLogsOpen(false)} />}
+      <div className="flex flex-col gap-3 shrink-0">
+        {running && agent.hostUrl && (
+          <div className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/5 p-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-2 mb-1">Live Dashboard URL</p>
+              <a href={agent.hostUrl} target="_blank" rel="noreferrer" className="block truncate font-mono text-sm text-accent-bright transition hover:text-accent">
+                {agent.hostUrl}
+              </a>
+            </div>
+            <a
+              href={agent.hostUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-lg bg-white px-5 py-2.5 text-xs font-bold text-ink transition hover:bg-gray"
+            >
+              Open Dashboard ↗
+            </a>
+          </div>
+        )}
+
+        {stopped && (
+          <div className="rounded-xl border border-white/5 bg-white/5 p-4">
+            <p className="text-sm text-muted">
+              {WORKER_ENABLED ? "Agent is stopped. Start it again to access the dashboard." : "Agent is stopped."}
+            </p>
+          </div>
+        )}
+
+        {unhealthy && (
+          <div className="rounded-xl border border-red/20 bg-red/10 p-4">
+            <p className="text-sm text-red">
+              Agent health check failed or the container crashed. Please check the logs for details.
+            </p>
+          </div>
+        )}
+
+        {!WORKER_ENABLED && (running || stopped || unhealthy) && (
+          <div className="rounded-xl border border-amber/20 bg-amber/10 p-4">
+            <p className="text-sm text-amber">
+              Lifecycle controls need a running deployer-worker. Provisioning is unavailable here.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {(running || stopped || unhealthy) && (
+        <TerminalLogs agentId={agent.id} />
+      )}
+    </div>
+  );
+}
+
+function TerminalLogs({ agentId }: { agentId: string }) {
+  const [logs, setLogs] = useState<string>("loading…");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/agents/${agentId}/logs`);
+        const data = await res.json();
+        if (!cancelled) setLogs(res.ok ? data.logs || "(no output yet)" : data.error || "could not read logs");
+      } catch {
+        if (!cancelled) setLogs("(network error reading logs)");
+      }
+    }
+    load();
+    const id = setInterval(load, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [agentId]);
+
+  return (
+    <div className="mt-2 flex-1 rounded-xl border border-white/10 bg-black overflow-hidden relative min-h-0">
+      <pre className="absolute inset-0 p-4 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-2 scrollbar-hide">
+        {logs}
+      </pre>
     </div>
   );
 }

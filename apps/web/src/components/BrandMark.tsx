@@ -23,8 +23,9 @@ export function BrandMark({
         style={{ width: glyph, height: glyph }}
       />
       <div className="leading-none">
-        <span className="brand-mark text-xl text-white">
-          ZYND<span className="text-accent">AI</span>
+        <span className="brand-mark text-xl">
+          <span className="text-green">Hermes</span>
+          <span className="text-white">Deployer</span>
         </span>
         {sublabel && (
           <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-2">

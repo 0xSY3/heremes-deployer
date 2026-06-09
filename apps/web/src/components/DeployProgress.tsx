@@ -75,10 +75,7 @@ export function DeployProgress({
   const pct = Math.round((done / DEPLOY_STEPS.length) * 100);
 
   return (
-    <div className="rise relative w-[min(480px,94vw)] overflow-hidden rounded-[1.75rem] border border-panel-edge-2 bg-panel-2/90 p-6 shadow-2xl shadow-black/60 ring-1 ring-white/5 backdrop-blur-xl">
-      {/* ambient accent glow */}
-      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-accent/20 blur-[90px]" />
-
+    <div className="rise relative w-[min(480px,94vw)] overflow-hidden rounded-[1.75rem] border border-panel-edge-2 bg-ink p-6 shadow-2xl shadow-black/60 ring-1 ring-white/5 backdrop-blur-xl">
       <div className="relative border-b border-panel-edge pb-5">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl uppercase tracking-wide text-parchment">
@@ -86,8 +83,8 @@ export function DeployProgress({
           </h2>
           {!state.terminal && (
             <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-bright opacity-70" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent-bright" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-70" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
             </span>
           )}
         </div>
@@ -96,9 +93,9 @@ export function DeployProgress({
         </p>
 
         {/* progress bar */}
-        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-ink-2">
+        <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-panel">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${failed ? "bg-red" : "bg-gradient-to-r from-accent to-accent-bright"}`}
+            className={`h-full rounded-full transition-all duration-500 ${failed ? "bg-red" : "bg-white"}`}
             style={{ width: `${failed ? 100 : pct}%` }}
           />
         </div>
@@ -112,27 +109,27 @@ export function DeployProgress({
           return (
             <li
               key={step}
-              className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition-all duration-300 ${
+              className={`flex items-center gap-3 rounded-lg border px-3.5 py-3 text-sm transition-all duration-300 ${
                 st === "ok"
-                  ? "border-green/20 bg-green/[0.07] text-parchment"
+                  ? "border-panel-edge text-parchment"
                   : st === "failed"
-                    ? "border-red/30 bg-red/10 text-red"
+                    ? "border-red/30 text-red"
                     : active
-                      ? "border-accent/40 bg-accent/10 text-accent-bright shadow-[0_0_20px_-8px_rgba(139,92,246,0.6)]"
-                      : "border-panel-edge bg-ink-2/40 text-muted-2"
+                      ? "border-white/20 text-white"
+                      : "border-panel-edge bg-transparent text-muted-2 opacity-50"
               }`}
               style={{ animationDelay: `${i * 40}ms` }}
             >
               {/* status badge */}
               <span
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border ${
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border ${
                   st === "ok"
-                    ? "border-green/40 bg-green/15 text-green"
+                    ? "border-panel-edge bg-panel text-green"
                     : st === "failed"
-                      ? "border-red/40 bg-red/15 text-red"
+                      ? "border-red/40 bg-red/10 text-red"
                       : active
-                        ? "border-accent/50 bg-accent/20 text-accent-bright"
-                        : "border-panel-edge bg-panel text-muted-2"
+                        ? "border-white/20 bg-white/10 text-white"
+                        : "border-panel-edge bg-transparent text-muted-2"
                 }`}
               >
                 {st === "ok" ? (
@@ -146,8 +143,8 @@ export function DeployProgress({
                 )}
               </span>
               <span className="flex-1 font-medium">{STEP_LABELS[step]}</span>
-              {st === "ok" && <span className="text-[11px] font-medium uppercase tracking-wider text-green/70">done</span>}
-              {active && <span className="text-[11px] font-medium uppercase tracking-wider text-accent-bright/80">working</span>}
+              {st === "ok" && <span className="text-[11px] font-medium uppercase tracking-wider text-green">done</span>}
+              {active && <span className="text-[11px] font-medium uppercase tracking-wider text-white">working</span>}
             </li>
           );
         })}
@@ -158,9 +155,8 @@ export function DeployProgress({
           href={state.url}
           target="_blank"
           rel="noreferrer"
-          className="group relative mt-6 inline-flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-accent text-sm font-semibold text-white shadow-lg shadow-accent/30 transition hover:bg-accent-dim"
+          className="group relative mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-semibold text-ink transition hover:bg-gray"
         >
-          <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
           Open dashboard
           <svg {...sv} className="h-4 w-4 transition-transform group-hover:translate-x-0.5"><path d="M7 17 17 7M7 7h10v10" /></svg>
         </a>
