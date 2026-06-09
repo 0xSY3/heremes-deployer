@@ -45,7 +45,15 @@ export const config = {
   hermesImage: required("HERMES_IMAGE"),
 
   dataRoot,
-  wildcardDomain: optional("DEPLOYER_WILDCARD_DOMAIN", "deployer.hermes.ai"),
+  // Public host agents are reached on: https://<wildcardDomain>/<slug>. The
+  // canonical var is HERMES_DOMAIN (the same one the Caddyfile + web app use);
+  // DEPLOYER_WILDCARD_DOMAIN is kept only as a legacy alias so an older
+  // worker.env still resolves. Reading the wrong var here silently shipped a
+  // bogus default domain (and, with SKIP_CADDY, localhost URLs) to clients.
+  wildcardDomain: optional(
+    "HERMES_DOMAIN",
+    optional("DEPLOYER_WILDCARD_DOMAIN", "deployer.hermes.ai"),
+  ),
   caddyAdminUrl: optional("CADDY_ADMIN_URL", "http://127.0.0.1:2019"),
   caddyServerName: optional("CADDY_SERVER_NAME", "srv0"),
   dockerSocket: optional("DOCKER_SOCKET", "/var/run/docker.sock"),
