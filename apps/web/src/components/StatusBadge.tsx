@@ -16,6 +16,11 @@ const STYLES: Record<string, { dot: string; shell: string; label: string }> = {
     shell: "border-panel-edge-2 bg-panel-2 text-muted",
     label: "stopped",
   },
+  deleting: {
+    dot: "bg-red",
+    shell: "border-red/30 bg-red/10 text-red",
+    label: "deleting",
+  },
   unhealthy: {
     dot: "bg-red",
     shell: "border-red/30 bg-red/10 text-red",

@@ -5,6 +5,8 @@
 //      `allocating_ports` IS the pessimistic lock) and drive it.
 //   2. drainStops — sweep agents the API flipped to `stopped`: tear down
 //      container + Caddy route + ports, then clear the columns.
+//   3. drainDeletes — sweep agents the API flipped to `deleting` ("Clean up"):
+//      same teardown, then delete the row so the card leaves the list.
 // The crash watcher, health/metrics/retention loops, and the deploy WS
 // server are started once at boot.
 
@@ -112,6 +114,46 @@ export async function drainStops(): Promise<void> {
   }
 }
 
+// Sweep agents the API flipped to `deleting` (the "Clean up" action): tear down
+// the container + Caddy route + ports, then DELETE the row so the card leaves
+// the list. Mirrors drainStops' best-effort teardown, but removes the row
+// instead of clearing columns. AgentLog cascades (schema onDelete: Cascade);
+// releasePort already deletes the PortAllocation rows. An agent with no
+// containerId (never started, or already stopped) deletes immediately.
+export async function drainDeletes(): Promise<void> {
+  const deleting = await prisma.agent.findMany({
+    where: { status: "deleting" },
+    select: { id: true, containerId: true, dashboardPort: true },
+  });
+  if (deleting.length > 0) {
+    console.log(`[worker] draining ${deleting.length} agent(s) marked for deletion`);
+  }
+
+  for (const row of deleting) {
+    stopTailer(row.id);
+
+    // Best-effort teardown — a leaked container/route is logged but must not
+    // wedge the delete, or the row would re-surface every tick.
+    if (row.containerId) {
+      await stopAndRemove(row.containerId).catch((e) =>
+        console.error(`[worker] delete: stopAndRemove ${row.id}: ${(e as Error).message}`),
+      );
+    }
+    await removeRoute(row.id).catch((e) =>
+      console.error(`[worker] delete: removeRoute ${row.id}: ${(e as Error).message}`),
+    );
+    await releasePort(row.id).catch((e) =>
+      console.error(`[worker] delete: releasePort ${row.id}: ${(e as Error).message}`),
+    );
+
+    try {
+      await prisma.agent.delete({ where: { id: row.id } });
+    } catch (e) {
+      console.error(`[worker] could not delete row ${row.id} — retry next tick:`, e);
+    }
+  }
+}
+
 export async function resumeTailers(): Promise<void> {
   // After a restart, re-attach log tailers to still-running agents so the
   // live-log view keeps working.
@@ -153,6 +195,7 @@ export async function main(): Promise<void> {
     try {
       await drainQueue();
       await drainStops();
+      await drainDeletes();
     } catch (e) {
       console.error("[worker] tick failed:", e);
     }

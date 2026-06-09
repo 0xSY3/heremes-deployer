@@ -40,11 +40,31 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const agent = await ownedOr404(user.id, id);
   if (!agent) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // Intent write only — the worker sweeps the container, route, and ports.
-  // The API never touches the Docker socket (single-writer rule, spec §1).
-  await prisma.agent.update({
+  // Does a live container exist? Only the worker may tear that down (it owns the
+  // Docker socket — single-writer rule), so we mark `deleting` and let
+  // drainDeletes sweep the container/route/ports, then delete the row.
+  const live = await prisma.agent.findUnique({
     where: { id },
-    data: { status: "stopped", stoppedAt: new Date() },
+    select: { containerId: true },
   });
+
+  if (live?.containerId) {
+    await prisma.agent.update({
+      where: { id },
+      data: { status: "deleting", stoppedAt: new Date() },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // No container (never started, already stopped, or the split Vercel/no-worker
+  // topology): nothing to tear down, so delete the row now instead of leaving it
+  // wedged at `deleting` forever. AgentLog cascades (schema onDelete: Cascade);
+  // PortAllocation + AgentMetric have no FK, so purge them explicitly to avoid
+  // leaking the port source-of-truth rows.
+  await prisma.$transaction([
+    prisma.portAllocation.deleteMany({ where: { agentId: id } }),
+    prisma.agentMetric.deleteMany({ where: { agentId: id } }),
+    prisma.agent.delete({ where: { id } }),
+  ]);
   return NextResponse.json({ ok: true });
 }

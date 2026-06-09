@@ -113,11 +113,10 @@ export function Dashboard({
         setActionError(data.error ?? "Could not clean up that agent.");
         return;
       }
-      setAgents((prev) =>
-        prev.map((a) =>
-          a.id === id ? { ...a, status: "stopped", hostUrl: null } : a,
-        ),
-      );
+      // Remove the card immediately — the worker drains the `deleting` row and
+      // deletes it, so the next full refresh won't bring it back. (The per-agent
+      // status poll only updates existing cards, never re-adds a filtered one.)
+      setAgents((prev) => prev.filter((a) => a.id !== id));
     } finally {
       setDeleting(null);
     }
