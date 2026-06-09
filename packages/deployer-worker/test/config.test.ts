@@ -86,6 +86,18 @@ describe("config defaults", () => {
     const { config } = await import("../src/config");
     expect(config.wildcardDomain).toBe("legacy.example.com");
   });
+
+  it("exposes DEPLOYER_PUBLIC_HOST for domainless public deploys (default empty)", async () => {
+    freshEnv({ DEPLOYER_PUBLIC_HOST: "100.24.70.231" });
+    const { config } = await import("../src/config");
+    expect(config.publicHost).toBe("100.24.70.231");
+  });
+
+  it("defaults publicHost to empty (true local dev → localhost URLs)", async () => {
+    freshEnv({});
+    const { config } = await import("../src/config");
+    expect(config.publicHost).toBe("");
+  });
 });
 
 describe("config boot guards", () => {

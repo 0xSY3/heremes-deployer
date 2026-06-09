@@ -55,10 +55,16 @@ const ACTIVE_STATUSES: ReadonlyArray<string> = [
 ];
 
 function buildHostUrl(slug: string, dashboardPort: number): string {
-  // Local-dev escape hatch: no Caddy means no reverse proxy on /<slug>, so the
-  // only reachable address is the container's published dashboard port. Hand
-  // that out so the "Open dashboard" link actually works locally.
-  if (config.skipCaddy) return `http://localhost:${dashboardPort}`;
+  // No-Caddy modes: no reverse proxy on /<slug>, so the only reachable address
+  // is the container's published dashboard port.
+  if (config.skipCaddy) {
+    // Public-host mode: a domainless deploy on a box with a public IP. Hand out
+    // http://<publicHost>:<port> so the link works off-box (the worker's
+    // security group must allow the agent port range). Falls back to localhost
+    // for true local dev when DEPLOYER_PUBLIC_HOST is unset.
+    if (config.publicHost) return `http://${config.publicHost}:${dashboardPort}`;
+    return `http://localhost:${dashboardPort}`;
+  }
   return `https://${config.wildcardDomain}/${slug}`;
 }
 

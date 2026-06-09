@@ -98,6 +98,12 @@ export const config = {
   // without a route. The container is still reachable at 127.0.0.1:<apiPort>.
   skipCaddy: boolEnv("DEPLOYER_SKIP_CADDY"),
 
+  // Domainless public deploy: with skipCaddy set, hand out
+  // http://<publicHost>:<dashboardPort> instead of localhost so the dashboard
+  // link is reachable off-box (the worker SG must open the agent port range).
+  // Empty = fall back to localhost (true local dev).
+  publicHost: optional("DEPLOYER_PUBLIC_HOST", ""),
+
   // Local-dev escape hatch (DOCKER DESKTOP ONLY): skip chown/chmod of the
   // per-agent /opt/data bind dir. On Docker Desktop the Linux VM maps bind-mount
   // uids transparently, so the container writes regardless of host ownership and
