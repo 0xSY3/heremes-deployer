@@ -9,6 +9,11 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" = the local dev/build host; "linux-arm64-openssl-3.0.x" = the
+  // Vercel serverless runtime. Both are bundled so a prebuilt CLI deploy from
+  // macOS (darwin-arm64) still ships the Linux query engine — without it the
+  // SSR Prisma calls crash with "could not locate the Query Engine".
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
