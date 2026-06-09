@@ -22,9 +22,6 @@ export function Dashboard({
   const [actionError, setActionError] = useState<string | null>(null);
   const atLimit = agents.length >= maxAgents;
   const runningCount = agents.filter((agent) => agent.status === "running").length;
-  const activeCount = agents.filter((agent) =>
-    ["queued", "allocating_ports", "starting", "health_checking", "registering_route"].includes(agent.status),
-  ).length;
 
   // Ref lets the stable polling interval read the latest list without being a
   // dependency, which would re-subscribe every render.
@@ -120,50 +117,45 @@ export function Dashboard({
   }
 
   return (
-    <main className="relative z-10 flex h-screen w-full flex-col overflow-hidden bg-ink text-parchment">
-      {/* Subtle ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-accent/10 blur-[120px] rounded-full pointer-events-none" />
+    <main className="relative z-10 flex h-screen w-full flex-col overflow-hidden bg-background font-sans text-foreground selection:bg-foreground selection:text-white">
 
-      <div className="mx-auto flex h-full w-full max-w-6xl flex-col px-6 py-6 lg:px-8 relative z-10">
-        <nav className="flex items-center justify-between mb-8 shrink-0">
-          <BrandMark sublabel="by Zynd" />
+      {/* Top Nav */}
+      <nav className="flex items-center justify-between border-b border-panel-edge shrink-0 w-full z-10 px-6 py-4">
+        <BrandMark />
+        
+        <div className="flex items-center gap-6">
+          {/* Metrics */}
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 pr-4 border-r border-panel-edge">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
-                {userName.slice(0, 1).toUpperCase()}
-              </div>
-              <span className="text-sm font-medium text-white/80">{userName}</span>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green" />
+              <span className="text-sm font-medium text-foreground">{runningCount} <span className="text-muted-2">Active</span></span>
             </div>
-            <SignOutButton />
+            <div className="w-px h-4 bg-panel-edge" />
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-foreground" />
+              <span className="text-sm font-medium text-foreground">{agents.length}/{maxAgents} <span className="text-muted-2">Slots</span></span>
+            </div>
           </div>
-        </nav>
 
+          <div className="hidden sm:block w-px h-6 bg-panel-edge" />
+
+          {/* User Profile */}
+          <div className="hidden sm:flex items-center gap-3">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-xs font-bold text-white">
+              {userName.slice(0, 1).toUpperCase()}
+            </div>
+            <span className="text-sm font-medium text-foreground">{userName}</span>
+          </div>
+
+          <div className="w-px h-6 bg-panel-edge" />
+
+          <SignOutButton />
+        </div>
+      </nav>
+
+      <div className="flex h-full w-full flex-col px-6 py-6 lg:px-8 relative z-10">
         {/* Main Content Area */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Header & Metrics row */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8 shrink-0">
-            <div>
-              <h1 className="font-display text-4xl uppercase tracking-wider text-white">Hermes Deployer</h1>
-              <p className="text-sm text-muted-2 mt-1">Manage your private AI agents and deployments.</p>
-            </div>
-            
-            <div className="flex items-center gap-6 rounded-lg border border-white/5 bg-white/5 px-5 py-2.5">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green" />
-                <span className="text-sm font-medium text-white">{runningCount} <span className="text-muted-2">Active</span></span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-accent-bright" />
-                <span className="text-sm font-medium text-white">{activeCount} <span className="text-muted-2">Transit</span></span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-white/20" />
-                <span className="text-sm font-medium text-white">{agents.length}/{maxAgents} <span className="text-muted-2">Slots</span></span>
-              </div>
-            </div>
-          </div>
 
           {actionError && (
             <div className="mb-6 shrink-0 inline-flex items-center gap-3 rounded-full bg-red/10 border border-red/20 px-4 py-2 text-sm text-red font-medium">
@@ -174,28 +166,28 @@ export function Dashboard({
           {/* Agents List Area */}
           <div className="flex-1 flex flex-col min-h-0 pb-8">
             {agents.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center text-center rounded-2xl border border-panel-edge border-dashed bg-panel-2/20">
-                <h3 className="font-display text-2xl uppercase tracking-wide text-white mb-2">No Deployments Found</h3>
-                <p className="max-w-sm text-sm text-muted-2 mb-8">
+              <div className="flex h-full flex-col items-center justify-center text-center border-2 border-panel-edge border-dashed bg-transparent p-12">
+                <h3 className="font-display text-2xl uppercase tracking-wide text-foreground mb-2">No Deployments Found</h3>
+                <p className="max-w-sm text-sm text-muted mb-8">
                   Connect your API keys to spin up a secure, containerized Hermes agent instantly.
                 </p>
                 <button
                   onClick={() => setModalOpen(true)}
-                  className="inline-flex h-12 items-center justify-center gap-3 rounded-full bg-white px-8 text-sm font-bold text-ink transition-all hover:bg-gray hover:scale-[1.02]"
+                  className="inline-flex h-12 items-center justify-center px-8 border border-foreground bg-transparent text-sm font-mono font-bold text-foreground transition-all hover:bg-foreground hover:text-white"
                 >
-                  Start First Deployment
+                  START FIRST DEPLOYMENT
                 </button>
               </div>
             ) : (
               <div className="flex flex-col h-full gap-4">
                 <div className="flex items-center justify-between mb-2 shrink-0">
-                  <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-2">Your Fleet</h2>
+                  <h2 className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-foreground">Your Fleet</h2>
                   {!atLimit && (
                     <button
                       onClick={() => setModalOpen(true)}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-panel-2 border border-panel-edge px-5 text-xs font-bold text-white transition-all hover:bg-panel"
+                      className="inline-flex h-9 items-center justify-center px-5 border border-foreground bg-transparent text-xs font-mono font-bold text-foreground transition-all hover:bg-foreground hover:text-white"
                     >
-                      + Deploy New
+                      + DEPLOY NEW
                     </button>
                   )}
                 </div>

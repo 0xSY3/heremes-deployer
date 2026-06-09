@@ -11,7 +11,7 @@ function defaultAgentName(): string {
 }
 
 const INPUT =
-  "mt-2 h-11 w-full rounded-lg border border-panel-edge bg-ink-2 px-3 text-sm text-parchment outline-none transition placeholder:text-muted-2 focus:border-accent focus:ring-2 focus:ring-accent/20";
+  "mt-2 h-11 w-full border border-foreground bg-transparent px-3 font-mono text-sm text-foreground outline-none transition placeholder:text-muted focus:ring-1 focus:ring-foreground";
 
 export function CreateAgentModal({
   onClose,
@@ -68,7 +68,7 @@ export function CreateAgentModal({
         ) : (
           <form
             onSubmit={submit}
-            className="rise w-[min(500px,94vw)] rounded-2xl border border-panel-edge bg-panel p-6 shadow-2xl shadow-black/60"
+            className="rise w-[min(500px,94vw)] border-2 border-foreground bg-background p-6"
           >
             <div className="flex items-start justify-between gap-3 border-b border-panel-edge pb-5">
               <div>
@@ -79,7 +79,7 @@ export function CreateAgentModal({
               </div>
             </div>
 
-            <label className="mt-5 block text-sm font-medium text-parchment">Agent name</label>
+            <label className="mt-5 block text-sm font-bold uppercase tracking-widest text-foreground">Agent name</label>
             <input
               autoFocus
               value={name}
@@ -91,7 +91,7 @@ export function CreateAgentModal({
               Lowercase letters, numbers, and hyphens. A default is ready for fast deploys.
             </p>
 
-            <label className="mt-5 block text-sm font-medium text-parchment">Provider</label>
+            <label className="mt-5 block text-sm font-bold uppercase tracking-widest text-foreground">Provider</label>
             <select
               value={llmProvider}
               onChange={(e) => setLlmProvider(e.target.value as Provider)}
@@ -101,7 +101,7 @@ export function CreateAgentModal({
               <option value="anthropic">Anthropic</option>
             </select>
 
-            <label className="mt-5 block text-sm font-medium text-parchment">LLM API key</label>
+            <label className="mt-5 block text-sm font-bold uppercase tracking-widest text-foreground">LLM API key</label>
             <input
               value={llmKey}
               onChange={(e) => setLlmKey(e.target.value)}
@@ -120,22 +120,22 @@ export function CreateAgentModal({
               </p>
             )}
 
-            <div className="mt-6 flex items-center justify-end gap-3 border-t border-panel-edge pt-5">
+            <div className="mt-8 flex items-center justify-end gap-4 border-t border-panel-edge pt-6">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={pending}
-                className="h-10 rounded-lg border border-panel-edge px-4 text-sm font-medium text-muted transition hover:border-panel-edge-2 hover:text-parchment disabled:opacity-40"
+                className="h-10 border border-foreground px-6 font-mono text-xs font-bold uppercase tracking-widest text-foreground transition hover:bg-foreground hover:text-white disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={pending}
-                className="group inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-dim disabled:opacity-50"
+                className="group inline-flex h-10 items-center gap-2 border border-foreground bg-foreground px-6 font-mono text-xs font-bold uppercase tracking-widest text-white transition hover:bg-transparent hover:text-foreground disabled:opacity-50"
               >
                 {pending ? "Creating…" : "Deploy Hermes"}
-                {!pending && <span className="transition-transform group-hover:translate-x-0.5">→</span>}
+                {!pending && <span className="transition-transform group-hover:translate-x-1">→</span>}
               </button>
             </div>
           </form>
