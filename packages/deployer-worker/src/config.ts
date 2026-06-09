@@ -104,6 +104,14 @@ export const config = {
   // Empty = fall back to localhost (true local dev).
   publicHost: optional("DEPLOYER_PUBLIC_HOST", ""),
 
+  // Per-agent subdomain base (e.g. "100.24.70.231.sslip.io" or "app.example.com").
+  // When set, each agent is served at https://<slug>.<base> on its OWN root via
+  // a host-matched Caddy route (no path-prefix strip). Required for dashboards
+  // that use absolute asset paths (/assets/*) — path-prefix routing breaks those
+  // because the browser fetches assets at the domain root. Empty = legacy
+  // path-prefix routing on wildcardDomain (/<slug>).
+  agentSubdomainBase: optional("DEPLOYER_AGENT_SUBDOMAIN_BASE", ""),
+
   // Local-dev escape hatch (DOCKER DESKTOP ONLY): skip chown/chmod of the
   // per-agent /opt/data bind dir. On Docker Desktop the Linux VM maps bind-mount
   // uids transparently, so the container writes regardless of host ownership and

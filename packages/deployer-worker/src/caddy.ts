@@ -137,6 +137,27 @@ export async function addRoute(
   dashboardPort: number,
 ): Promise<void> {
   if (cfg.skipCaddy) return;
+
+  // Subdomain mode: match the agent's own host (<slug>.<base>) and proxy to its
+  // dashboard port at root — no path strip. The dashboard's absolute /assets/*
+  // requests then hit this same host and resolve. Caddy on-demand TLS mints the
+  // cert for the new subdomain on first request.
+  if (cfg.agentSubdomainBase) {
+    const route: CaddyRoute = {
+      "@id": agentId,
+      match: [{ host: [`${slug}.${cfg.agentSubdomainBase}`] }],
+      handle: [
+        {
+          handler: "reverse_proxy",
+          upstreams: [{ dial: `127.0.0.1:${dashboardPort}` }],
+        },
+      ],
+    };
+    await prependRoute(route);
+    return;
+  }
+
+  // Legacy path-prefix mode on the single wildcardDomain.
   const host = cfg.wildcardDomain;
   const prefix = `/${slug}`;
   // Match the prefix exactly (so /<slug> with no trailing slash still

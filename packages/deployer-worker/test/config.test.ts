@@ -98,6 +98,12 @@ describe("config defaults", () => {
     const { config } = await import("../src/config");
     expect(config.publicHost).toBe("");
   });
+
+  it("exposes DEPLOYER_AGENT_SUBDOMAIN_BASE for per-agent subdomain routing", async () => {
+    freshEnv({ DEPLOYER_AGENT_SUBDOMAIN_BASE: "100.24.70.231.sslip.io" });
+    const { config } = await import("../src/config");
+    expect(config.agentSubdomainBase).toBe("100.24.70.231.sslip.io");
+  });
 });
 
 describe("config boot guards", () => {

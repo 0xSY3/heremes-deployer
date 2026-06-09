@@ -65,6 +65,12 @@ function buildHostUrl(slug: string, dashboardPort: number): string {
     if (config.publicHost) return `http://${config.publicHost}:${dashboardPort}`;
     return `http://localhost:${dashboardPort}`;
   }
+  // Subdomain mode: each agent at its own root (https://<slug>.<base>), so the
+  // dashboard's absolute /assets/* paths resolve. See config.agentSubdomainBase.
+  if (config.agentSubdomainBase) {
+    return `https://${slug}.${config.agentSubdomainBase}`;
+  }
+  // Legacy path-prefix mode (breaks dashboards with absolute asset paths).
   return `https://${config.wildcardDomain}/${slug}`;
 }
 
