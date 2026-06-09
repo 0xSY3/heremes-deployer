@@ -33,20 +33,28 @@ export function LogsModal({
   }, [agentId]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/85 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-md"
+      onClick={onClose}
+    >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="rise flex h-[70vh] w-[min(820px,94vw)] flex-col rounded-xl border border-panel-edge bg-ink-2 p-5 shadow-2xl"
+        className="rise flex h-[72vh] w-[min(920px,96vw)] flex-col rounded-2xl border border-panel-edge bg-panel p-5 shadow-2xl shadow-black/60"
       >
-        <div className="flex items-center justify-between pb-3">
-          <h3 className="font-display text-lg text-parchment">
-            Logs — <span className="text-gold">{name}</span>
+        <div className="flex items-center justify-between border-b border-panel-edge pb-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-muted">
+            <span className="text-muted-2">Logs</span>
+            <span className="text-muted-2">/</span>
+            <span className="font-mono text-xs normal-case tracking-normal text-accent-bright">{name}</span>
           </h3>
-          <button onClick={onClose} className="text-xs uppercase tracking-wider text-muted hover:text-parchment">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-panel-edge px-3 py-1.5 text-sm font-medium text-muted transition hover:border-panel-edge-2 hover:text-parchment"
+          >
             Close
           </button>
         </div>
-        <pre className="flex-1 overflow-auto whitespace-pre-wrap rounded border border-panel-edge bg-ink p-4 font-mono text-[11px] leading-relaxed text-muted">
+        <pre className="mt-4 flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-panel-edge bg-ink p-4 font-mono text-xs leading-relaxed text-muted">
           {logs}
         </pre>
       </div>

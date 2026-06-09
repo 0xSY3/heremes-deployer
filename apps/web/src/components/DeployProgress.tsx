@@ -14,9 +14,8 @@ const STEP_LABELS: Record<DeployStep, string> = {
 
 function mark(stepState: string | undefined): string {
   if (stepState === "ok") return "✓";
-  if (stepState === "failed") return "✗";
-  if (stepState === "started") return "…";
-  return "·";
+  if (stepState === "failed") return "!";
+  return "";
 }
 
 export function DeployProgress({
@@ -32,28 +31,52 @@ export function DeployProgress({
   const failed = state.terminal && state.status !== "running";
 
   return (
-    <div className="rise w-[min(420px,92vw)] rounded-xl border border-panel-edge bg-ink-2 p-7 shadow-2xl">
-      <h2 className="font-display text-2xl text-parchment">Deploying your agent</h2>
-      <p className="mt-1 text-xs text-muted">Live progress — no need to refresh.</p>
+    <div className="rise w-[min(480px,94vw)] rounded-2xl border border-panel-edge bg-panel p-6 shadow-2xl shadow-black/60">
+      <div className="border-b border-panel-edge pb-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-2xl uppercase tracking-wide text-parchment">
+            Deploying Hermes
+          </h2>
+          {!state.terminal && (
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-bright opacity-70" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-bright" />
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-sm text-muted">Live progress from the worker.</p>
+      </div>
 
-      <ul className="mt-6 space-y-2">
+      <ul className="mt-5 space-y-2.5">
         {DEPLOY_STEPS.map((step) => {
           const st = state.steps[step];
           const active = st === "started";
           return (
             <li
               key={step}
-              className={`flex items-center gap-3 text-sm ${
+              className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-sm ${
                 st === "ok"
-                  ? "text-parchment"
+                  ? "border-green/25 bg-green/10 text-parchment"
                   : st === "failed"
-                    ? "text-red"
+                    ? "border-red/30 bg-red/10 text-red"
                     : active
-                      ? "text-gold"
-                      : "text-muted"
+                      ? "border-accent/35 bg-accent/10 text-accent-bright"
+                      : "border-panel-edge bg-ink-2 text-muted"
               }`}
             >
-              <span className="w-4 text-center font-mono">{mark(st)}</span>
+              <span
+                className={`grid h-5 w-5 place-items-center rounded-full border text-[10px] ${
+                  st === "ok"
+                    ? "border-green/40 bg-green/20 text-green"
+                    : st === "failed"
+                      ? "border-red/40 bg-red/20 text-red"
+                      : active
+                        ? "breathe border-accent/45 bg-accent/25 text-accent-bright"
+                        : "border-panel-edge text-muted-2"
+                }`}
+              >
+                {mark(st)}
+              </span>
               <span>{STEP_LABELS[step]}</span>
             </li>
           );
@@ -63,22 +86,23 @@ export function DeployProgress({
       {state.status === "running" && state.url && (
         <a
           href={state.url}
-          className="mt-6 block rounded bg-gold px-4 py-2 text-center text-xs font-bold uppercase tracking-wider text-ink hover:opacity-90"
+          className="group mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-dim"
         >
-          Open dashboard →
+          Open dashboard
+          <span className="transition-transform group-hover:translate-x-0.5">↗</span>
         </a>
       )}
 
       {failed && (
-        <p className="mt-4 text-xs text-red">
-          ⚠ Deploy {state.status}. {state.error ?? "Check logs and try again."}
+        <p className="mt-4 rounded-lg border border-red/30 bg-red/10 px-3 py-2 text-sm text-red">
+          Deploy {state.status}. {state.error ?? "Check logs and try again."}
         </p>
       )}
 
       {state.terminal && (
         <button
           onClick={() => onDone(state.status, state.url)}
-          className="mt-6 w-full text-xs uppercase tracking-wider text-muted hover:text-parchment"
+          className="mt-5 h-10 w-full rounded-lg border border-panel-edge text-sm font-medium text-muted transition hover:border-panel-edge-2 hover:text-parchment"
         >
           Close
         </button>

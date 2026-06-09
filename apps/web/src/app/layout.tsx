@@ -1,9 +1,33 @@
 import type { Metadata } from "next";
+import { Chakra_Petch, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+// Matches zynd.ai: Chakra Petch (700, uppercase) for display, Space Grotesk for
+// body, JetBrains Mono for meta/code. Mirrors the main dashboard's font stack.
+const chakra = Chakra_Petch({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  weight: ["300", "400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  weight: ["400", "500"],
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Hermes — your private agent",
-  description: "Spin up your own Hermes agent in one click.",
+  title: "ZYND Hermes Deployer",
+  description: "One-click private Hermes agent deployment by ZYND.",
 };
 
 export default function RootLayout({
@@ -12,15 +36,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,400&family=JetBrains+Mono:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html
+      lang="en"
+      className={`h-full antialiased ${chakra.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+    >
       <body className="min-h-full">{children}</body>
     </html>
   );

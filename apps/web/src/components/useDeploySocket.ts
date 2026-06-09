@@ -25,7 +25,10 @@ export function useDeploySocket(agentId: string, wsToken: string): DeployState {
   const [state, dispatch] = useReducer(reduceFrame, undefined, initialDeployState);
   const [, force] = useState(0);
   const stateRef = useRef(state);
-  stateRef.current = state;
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
