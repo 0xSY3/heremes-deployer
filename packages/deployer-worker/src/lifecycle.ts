@@ -306,6 +306,17 @@ export async function drive(agentId: string): Promise<void> {
     emitStep(agentId, "running", "ok");
     emitReady(agentId, hostUrl);
     await appendSystemLog(agentId, `[worker] live at ${hostUrl}`);
+
+    // Pre-warm the TLS cert: with on-demand TLS (subdomain mode), the FIRST
+    // HTTPS hit to a brand-new <slug> host triggers a Let's Encrypt mint
+    // (~5-10s), which the user would otherwise wait through on "Open dashboard".
+    // Hitting it ourselves now mints the cert before they click. Fire-and-forget
+    // — never block or fail the deploy on this.
+    if (hostUrl.startsWith("https://")) {
+      void fetch(hostUrl, { method: "HEAD", signal: AbortSignal.timeout(20_000) }).catch(
+        () => undefined,
+      );
+    }
   } catch (e) {
     const msg = scrubError((e as Error).message, secretValues);
     await failDeployment(agentId, step, msg, cleanup);
