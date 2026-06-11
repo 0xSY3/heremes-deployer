@@ -4,7 +4,20 @@ import { useState } from "react";
 import { BrandMark } from "./BrandMark";
 import { DeployProgress } from "./DeployProgress";
 
-type Provider = "openrouter" | "anthropic";
+type Provider = "openrouter" | "anthropic" | "cloudflare";
+
+const KEY_PLACEHOLDER: Record<Provider, string> = {
+  openrouter: "sk-or-...",
+  anthropic: "sk-ant-...",
+  cloudflare: "Cloudflare API token (Workers AI: Edit)",
+};
+
+const KEY_HELP: Record<Provider, string> = {
+  openrouter: "Your OpenRouter key. Lives only in your agent's container.",
+  anthropic: "Your Anthropic key. Lives only in your agent's container.",
+  cloudflare:
+    "An API token with the Workers AI permission. Lives only in your agent's container.",
+};
 
 function defaultAgentName(): string {
   return `hermes-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -23,6 +36,7 @@ export function CreateAgentModal({
   const [name, setName] = useState(defaultAgentName);
   const [llmProvider, setLlmProvider] = useState<Provider>("openrouter");
   const [llmKey, setLlmKey] = useState("");
+  const [cfAccountId, setCfAccountId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deploy, setDeploy] = useState<{ id: string; wsToken: string } | null>(null);
@@ -35,7 +49,12 @@ export function CreateAgentModal({
       const res = await fetch("/api/agents", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, llmProvider, llmKey }),
+        body: JSON.stringify({
+          name,
+          llmProvider,
+          llmKey,
+          ...(llmProvider === "cloudflare" ? { cfAccountId } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -99,20 +118,35 @@ export function CreateAgentModal({
             >
               <option value="openrouter">OpenRouter</option>
               <option value="anthropic">Anthropic</option>
+              <option value="cloudflare">Cloudflare (Workers AI)</option>
             </select>
+
+            {llmProvider === "cloudflare" && (
+              <>
+                <label className="mt-5 block text-sm font-bold uppercase tracking-widest text-foreground">
+                  Cloudflare account ID
+                </label>
+                <input
+                  value={cfAccountId}
+                  onChange={(e) => setCfAccountId(e.target.value.trim())}
+                  placeholder="32-character hex id from the dashboard"
+                  className={INPUT}
+                />
+                <p className="mt-2 text-xs text-muted-2">
+                  Cloudflare dashboard → your account → Account ID.
+                </p>
+              </>
+            )}
 
             <label className="mt-5 block text-sm font-bold uppercase tracking-widest text-foreground">LLM API key</label>
             <input
               value={llmKey}
               onChange={(e) => setLlmKey(e.target.value)}
-              placeholder={llmProvider === "anthropic" ? "sk-ant-..." : "sk-or-..."}
+              placeholder={KEY_PLACEHOLDER[llmProvider]}
               type="password"
               className={INPUT}
             />
-            <p className="mt-2 text-xs text-muted-2">
-              Your {llmProvider === "anthropic" ? "Anthropic" : "OpenRouter"} key. Lives only in your
-              agent&apos;s container.
-            </p>
+            <p className="mt-2 text-xs text-muted-2">{KEY_HELP[llmProvider]}</p>
 
             {error && (
               <p className="mt-4 rounded-lg border border-red/30 bg-red/10 px-3 py-2 text-sm text-red">

@@ -16,6 +16,7 @@ const WS_TOKEN_TTL_SEC = 300;
 const PROVIDER_TO_ENV = {
   openrouter: "OPENROUTER_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
+  cloudflare: "CLOUDFLARE_API_KEY",
 } as const;
 
 export async function GET() {
@@ -74,9 +75,15 @@ export async function POST(req: Request) {
     // (spec §5). writeSecret takes a FLAT env record (see Shared-module
     // contract) — the same shape buildAgentEnv reads back at `starting`. The
     // raw key never lands on the Agent row; only the returned secretRef path does.
+    // CF_ACCOUNT_ID rides in the secret blob: the worker needs it to build the
+    // per-account Workers AI endpoint URL in the seeded config.yaml, and the
+    // blob is the only worker-readable channel that never touches the Agent row.
     const secretRef = await writeSecret(agent.id, {
       API_SERVER_KEY: generateApiKey(),
       [PROVIDER_TO_ENV[body.llmProvider]]: body.llmKey,
+      ...(body.llmProvider === "cloudflare" && body.cfAccountId
+        ? { CF_ACCOUNT_ID: body.cfAccountId }
+        : {}),
     });
     await prisma.agent.update({ where: { id: agent.id }, data: { secretRef } });
 

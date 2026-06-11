@@ -12,6 +12,7 @@ vi.hoisted(() => {
 
 import {
   ageAvailable,
+  buildAgentConfigYaml,
   buildAgentEnv,
   decryptFile,
   deleteSecret,
@@ -20,6 +21,60 @@ import {
   readSecret,
   writeSecret,
 } from "../src/secrets.js";
+
+describe("buildAgentEnv (cloudflare)", () => {
+  it("maps cloudflare provider to CLOUDFLARE_API_KEY", () => {
+    // #given a secret holding a Cloudflare token
+    const secret = { API_SERVER_KEY: "k-server", CLOUDFLARE_API_KEY: "cfut-x" };
+
+    // #when building the env
+    const env = buildAgentEnv({ secret, llmProvider: "cloudflare" });
+
+    // #then the token is injected under the name the seeded config's key_env reads
+    expect(env.CLOUDFLARE_API_KEY).toBe("cfut-x");
+    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+});
+
+describe("buildAgentConfigYaml", () => {
+  it("builds a cloudflare provider block with the account-scoped endpoint", () => {
+    // #given a cloudflare secret with the account id
+    const yaml = buildAgentConfigYaml({
+      llmProvider: "cloudflare",
+      secret: { CLOUDFLARE_API_KEY: "cfut-x", CF_ACCOUNT_ID: "a".repeat(32) },
+    });
+
+    // #then the seed pins provider, model, endpoint, and env-var key source
+    expect(yaml).toContain("provider: cloudflare");
+    expect(yaml).toContain(
+      `base_url: "https://api.cloudflare.com/client/v4/accounts/${"a".repeat(32)}/ai/v1"`,
+    );
+    expect(yaml).toContain("key_env: CLOUDFLARE_API_KEY");
+    expect(yaml).toContain('default: "@cf/openai/gpt-oss-120b"');
+  });
+
+  it("throws for cloudflare when CF_ACCOUNT_ID is missing", () => {
+    // #then the deploy fails loudly instead of building a broken endpoint URL
+    expect(() =>
+      buildAgentConfigYaml({ llmProvider: "cloudflare", secret: { CLOUDFLARE_API_KEY: "x" } }),
+    ).toThrow(/CF_ACCOUNT_ID/);
+  });
+
+  it("pins the default model for openrouter so DEPLOYER_DEFAULT_MODEL takes effect", () => {
+    // #when building the openrouter seed
+    const yaml = buildAgentConfigYaml({ llmProvider: "openrouter", secret: {} });
+
+    // #then model.default carries the worker's configured default
+    expect(yaml).toContain('default: "deepseek/deepseek-v4-flash"');
+    expect(yaml).toContain('base_url: "https://openrouter.ai/api/v1"');
+  });
+
+  it("returns null for anthropic (image auto-detects the key)", () => {
+    // #then no seed is written for anthropic agents
+    expect(buildAgentConfigYaml({ llmProvider: "anthropic", secret: {} })).toBeNull();
+  });
+});
 
 // age/age-keygen are provisioned by infra/install.sh. On a dev box without
 // them the round-trip can't run, so skip rather than fail the suite.

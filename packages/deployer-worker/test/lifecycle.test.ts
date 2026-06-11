@@ -26,11 +26,14 @@ const mkdirMock = vi.fn();
 const chownMock = vi.fn();
 const chmodMock = vi.fn();
 const statMock = vi.fn();
+const writeFileMock = vi.fn();
+const buildAgentConfigYamlMock = vi.fn();
 vi.mock("node:fs/promises", () => ({
   mkdir: (...a: unknown[]) => mkdirMock(...a),
   chown: (...a: unknown[]) => chownMock(...a),
   chmod: (...a: unknown[]) => chmodMock(...a),
   stat: (...a: unknown[]) => statMock(...a),
+  writeFile: (...a: unknown[]) => writeFileMock(...a),
 }));
 
 // --- ports ---
@@ -68,6 +71,7 @@ vi.mock("../src/db-secrets", () => ({
 }));
 vi.mock("../src/secrets", () => ({
   buildAgentEnv: (...a: unknown[]) => buildAgentEnvMock(...a),
+  buildAgentConfigYaml: (...a: unknown[]) => buildAgentConfigYamlMock(...a),
 }));
 
 // --- logs ---
@@ -124,7 +128,16 @@ beforeEach(() => {
   chownMock.mockReset().mockResolvedValue(undefined);
   chmodMock.mockReset().mockResolvedValue(undefined);
   // Fresh dir owned by the worker (not yet secured) — the tiers must run.
-  statMock.mockReset().mockResolvedValue({ uid: 997, gid: 997, mode: 0o40755 });
+  // config.yaml does not exist yet (ENOENT) so the seed path is exercised.
+  statMock.mockReset().mockImplementation((p: string) => {
+    if (typeof p === "string" && p.endsWith("config.yaml")) {
+      return Promise.reject(Object.assign(new Error("not found"), { code: "ENOENT" }));
+    }
+    return Promise.resolve({ uid: 997, gid: 997, mode: 0o40755 });
+  });
+  writeFileMock.mockReset().mockResolvedValue(undefined);
+  // Default: no seed needed (anthropic-like) — config tests opt in explicitly.
+  buildAgentConfigYamlMock.mockReset().mockReturnValue(null);
   configMock.skipDataDirChown = false;
 });
 
@@ -220,6 +233,53 @@ test("world-accessible dir is NOT accepted as secured — the tiers still run", 
   // #then it re-secures the dir instead of trusting the loose perms
   expect(chownMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 10000, 10000);
   expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o700);
+});
+
+test("seeds config.yaml before the container starts when the provider needs one", async () => {
+  // #given a provider whose model/provider must be pinned via config.yaml
+  buildAgentConfigYamlMock.mockReturnValue("model:\n  provider: cloudflare\n");
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then the seed lands in the data dir group-readable (0660) and the deploy runs
+  expect(writeFileMock).toHaveBeenCalledWith(
+    "/data/agents/agent-1/data/config.yaml",
+    "model:\n  provider: cloudflare\n",
+    { mode: 0o660 },
+  );
+  expect(chownMock).toHaveBeenCalledWith("/data/agents/agent-1/data/config.yaml", 10000, 10000);
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
+test("does not overwrite an existing config.yaml on redeploy", async () => {
+  // #given the agent booted before — the gateway owns/migrated its config.yaml
+  buildAgentConfigYamlMock.mockReturnValue("model:\n  provider: cloudflare\n");
+  statMock.mockImplementation((p: string) =>
+    Promise.resolve(
+      typeof p === "string" && p.endsWith("config.yaml")
+        ? { uid: 10000, gid: 10000, mode: 0o100660 }
+        : { uid: 997, gid: 997, mode: 0o40755 },
+    ),
+  );
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then the existing file is left untouched
+  expect(writeFileMock).not.toHaveBeenCalled();
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
+test("skips the seed entirely when the provider needs no config.yaml", async () => {
+  // #given buildAgentConfigYaml returns null (anthropic)
+  buildAgentConfigYamlMock.mockReturnValue(null);
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then nothing is written
+  expect(writeFileMock).not.toHaveBeenCalled();
 });
 
 test("worker that can neither own nor chgrp the dir fails the deploy — never widens perms", async () => {

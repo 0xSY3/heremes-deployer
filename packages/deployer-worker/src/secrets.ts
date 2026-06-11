@@ -162,12 +162,16 @@ export function generateApiKey(): string {
   return randomBytes(24).toString("hex");
 }
 
-export type LlmProvider = "openrouter" | "anthropic";
+export type LlmProvider = "openrouter" | "anthropic" | "cloudflare";
 
 // Provider -> the env var the Hermes image reads its LLM key from.
 // anthropic uses the native ANTHROPIC_API_KEY; everything else routes
 // through OpenRouter (spec §4).
 function providerKeyName(provider: LlmProvider): string {
+  // CLOUDFLARE_API_KEY (not _TOKEN): the Hermes image's host-derived key
+  // lookup resolves api.cloudflare.com → CLOUDFLARE_API_KEY, and the seeded
+  // config.yaml's key_env names the same var — one name end to end.
+  if (provider === "cloudflare") return "CLOUDFLARE_API_KEY";
   return provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENROUTER_API_KEY";
 }
 
@@ -229,4 +233,66 @@ export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
     // Spread last so a preset model override wins over the default.
     ...personalityEnv(opts.personalityId),
   };
+}
+
+// JSON string literals are valid YAML double-quoted scalars, so this safely
+// embeds operator/user-supplied values (model ids, account ids) in the seed.
+function yamlQuote(value: string): string {
+  return JSON.stringify(value);
+}
+
+/**
+ * Seed config.yaml for a fresh agent. The current Hermes image ignores the
+ * HERMES_MODEL / provider env vars — model and provider come exclusively from
+ * HERMES_HOME/config.yaml — so the worker seeds the file before first boot
+ * (the image's bootstrap merges around an existing file rather than
+ * replacing it; verified live 2026-06-11).
+ *
+ * - cloudflare: named custom provider pointing at the account's Workers AI
+ *   OpenAI-compatible endpoint; the key is read at request time from the
+ *   CLOUDFLARE_API_KEY env var buildAgentEnv injects.
+ * - openrouter: pin model.default so DEPLOYER_DEFAULT_MODEL takes effect.
+ * - anthropic: return null — the image auto-detects ANTHROPIC_API_KEY and
+ *   its own default model is an Anthropic id, so no seed is needed.
+ *
+ * @throws for cloudflare when the secret lacks CF_ACCOUNT_ID — the endpoint
+ *   URL embeds the account id, so deploying without it can never work.
+ */
+export function buildAgentConfigYaml(opts: {
+  llmProvider: LlmProvider;
+  secret: Record<string, string>;
+}): string | null {
+  if (opts.llmProvider === "cloudflare") {
+    const accountId = opts.secret.CF_ACCOUNT_ID;
+    if (!accountId) {
+      throw new Error("secret is missing CF_ACCOUNT_ID for provider cloudflare");
+    }
+    const baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+    const model = cfg.cfDefaultModel;
+    return [
+      "model:",
+      "  provider: cloudflare",
+      `  default: ${yamlQuote(model)}`,
+      "providers:",
+      "  cloudflare:",
+      "    name: cloudflare",
+      `    base_url: ${yamlQuote(baseUrl)}`,
+      "    key_env: CLOUDFLARE_API_KEY",
+      "    api_mode: chat_completions",
+      `    default_model: ${yamlQuote(model)}`,
+      "",
+    ].join("\n");
+  }
+
+  if (opts.llmProvider === "openrouter") {
+    return [
+      "model:",
+      "  provider: auto",
+      `  default: ${yamlQuote(cfg.defaultModel)}`,
+      `  base_url: "https://openrouter.ai/api/v1"`,
+      "",
+    ].join("\n");
+  }
+
+  return null;
 }

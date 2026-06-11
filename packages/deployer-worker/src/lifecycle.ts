@@ -7,7 +7,7 @@
 //   - DB status is written FIRST, then emitStep — so a reconnecting socket
 //     can backfill the current step from the row (DB = source of truth).
 
-import { mkdir, chown, chmod, stat } from "node:fs/promises";
+import { mkdir, chown, chmod, stat, writeFile } from "node:fs/promises";
 
 import { prisma } from "./db";
 import { config, paths, HERMES_UID, HERMES_GID } from "./config";
@@ -15,7 +15,7 @@ import { allocatePort, releasePort } from "./ports";
 import { runContainer, stopAndRemove, waitForHealth } from "./docker";
 import { addRoute, removeRoute } from "./caddy";
 import { readSecret } from "./db-secrets";
-import { buildAgentEnv } from "./secrets";
+import { buildAgentEnv, buildAgentConfigYaml, type LlmProvider } from "./secrets";
 import { startTailer, stopTailer, appendSystemLog } from "./logs";
 import { emitStep, emitReady, emitDone, type StepName } from "./events";
 
@@ -145,6 +145,36 @@ async function prepareDataDir(dataDir: string, agentId: string): Promise<void> {
 }
 
 /**
+ * Write the seed config.yaml into a FRESH agent data dir (no-op when the file
+ * already exists — a redeploy/restart must preserve the gateway's own config
+ * migrations and any operator edits). Group-owned by HERMES_GID with 0660 so
+ * the container uid (via the shared gid) can read it AND rewrite it in place
+ * when the image's config migration runs.
+ */
+async function seedConfigYaml(dataDir: string, yaml: string, agentId: string): Promise<void> {
+  const configPath = `${dataDir}/config.yaml`;
+  try {
+    await stat(configPath);
+    return;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+
+  await writeFile(configPath, yaml, { mode: 0o660 });
+  try {
+    await chown(configPath, HERMES_UID, HERMES_GID);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "ENOSYS") throw e;
+    // Non-root worker: owner stays the worker user; group share is enough.
+    await chown(configPath, -1, HERMES_GID);
+  }
+  await appendSystemLog(agentId, "[worker] seeded config.yaml (model/provider)").catch(
+    () => undefined,
+  );
+}
+
+/**
  * DB is the source of truth (spec §2): write Agent.status FIRST, then emit
  * the matching step frame. `state` lets the UI render a live checklist —
  * `started` when a step begins, `ok` when it completes.
@@ -253,7 +283,7 @@ export async function drive(agentId: string): Promise<void> {
     secretValues.push(...Object.values(secret).filter((v): v is string => typeof v === "string"));
     const env = buildAgentEnv({
       secret,
-      llmProvider: agent.llmProvider as "openrouter" | "anthropic",
+      llmProvider: agent.llmProvider as LlmProvider,
       ...(agent.personalityId ? { personalityId: agent.personalityId } : {}),
     });
 
@@ -276,6 +306,14 @@ export async function drive(agentId: string): Promise<void> {
     const dataDir = paths.agentData(agentId);
     await mkdir(dataDir, { recursive: true });
     await prepareDataDir(dataDir, agentId);
+
+    // The image reads model/provider from config.yaml only (HERMES_MODEL env
+    // is dead in current builds) — seed it before first boot.
+    const seedYaml = buildAgentConfigYaml({
+      llmProvider: agent.llmProvider as LlmProvider,
+      secret,
+    });
+    if (seedYaml) await seedConfigYaml(dataDir, seedYaml, agentId);
 
     containerId = await runContainer({
       agentId,

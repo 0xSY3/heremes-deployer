@@ -35,4 +35,38 @@ describe("createAgentSchema", () => {
     });
     expect(out.success).toBe(true);
   });
+  it("accepts a valid cloudflare body (token + 32-hex account id)", () => {
+    const out = createAgentSchema.safeParse({
+      name: "cf-agent",
+      llmProvider: "cloudflare",
+      llmKey: "cfut_FESiL4BfEYU8yf8Q2xXHoY8oOT0kPs66",
+      cfAccountId: "ff19753281ef97f7fd11923a2e69160d",
+    });
+    expect(out.success).toBe(true);
+  });
+  it("rejects cloudflare without an account id", () => {
+    const out = createAgentSchema.safeParse({
+      name: "cf-agent",
+      llmProvider: "cloudflare",
+      llmKey: "cfut_FESiL4BfEYU8yf8Q2xXHoY8oOT0kPs66",
+    });
+    expect(out.success).toBe(false);
+  });
+  it("rejects a malformed cloudflare account id", () => {
+    const out = createAgentSchema.safeParse({
+      name: "cf-agent",
+      llmProvider: "cloudflare",
+      llmKey: "cfut_FESiL4BfEYU8yf8Q2xXHoY8oOT0kPs66",
+      cfAccountId: "not-a-hex-id",
+    });
+    expect(out.success).toBe(false);
+  });
+  it("still requires the sk-or- prefix for openrouter keys", () => {
+    const out = createAgentSchema.safeParse({
+      name: "x",
+      llmProvider: "openrouter",
+      llmKey: "cfut_notAnOpenrouterKey123456",
+    });
+    expect(out.success).toBe(false);
+  });
 });
