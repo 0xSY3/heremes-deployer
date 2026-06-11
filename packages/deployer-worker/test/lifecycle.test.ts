@@ -25,10 +25,12 @@ vi.mock("../src/config", () => ({
 const mkdirMock = vi.fn();
 const chownMock = vi.fn();
 const chmodMock = vi.fn();
+const statMock = vi.fn();
 vi.mock("node:fs/promises", () => ({
   mkdir: (...a: unknown[]) => mkdirMock(...a),
   chown: (...a: unknown[]) => chownMock(...a),
   chmod: (...a: unknown[]) => chmodMock(...a),
+  stat: (...a: unknown[]) => statMock(...a),
 }));
 
 // --- ports ---
@@ -121,6 +123,8 @@ beforeEach(() => {
   mkdirMock.mockReset().mockResolvedValue(undefined);
   chownMock.mockReset().mockResolvedValue(undefined);
   chmodMock.mockReset().mockResolvedValue(undefined);
+  // Fresh dir owned by the worker (not yet secured) — the tiers must run.
+  statMock.mockReset().mockResolvedValue({ uid: 997, gid: 997, mode: 0o40755 });
   configMock.skipDataDirChown = false;
 });
 
@@ -189,6 +193,33 @@ test("non-root worker in HERMES_GID: chgrp + 0770, no world access, deploy proce
   expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o770);
   expect(chmodMock).not.toHaveBeenCalledWith("/data/agents/agent-1/data", 0o777);
   expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
+test("redeploy of a booted agent: dir already owned by the container uid is accepted untouched", async () => {
+  // #given the image entrypoint chowned HERMES_HOME to 10000:0700 on first
+  // boot — a non-root worker can no longer chown/chgrp it, so the tiers would
+  // EPERM on every restart without the already-secured early return
+  statMock.mockResolvedValue({ uid: 10000, gid: 10000, mode: 0o40700 });
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then no ownership changes are attempted and the deploy reaches running
+  expect(chownMock).not.toHaveBeenCalled();
+  expect(chmodMock).not.toHaveBeenCalled();
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
+test("world-accessible dir is NOT accepted as secured — the tiers still run", async () => {
+  // #given a dir owned by the container uid but world-readable
+  statMock.mockResolvedValue({ uid: 10000, gid: 10000, mode: 0o40755 });
+
+  // #when driven (worker is root here, so tier 1 fixes it)
+  await drive("agent-1");
+
+  // #then it re-secures the dir instead of trusting the loose perms
+  expect(chownMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 10000, 10000);
+  expect(chmodMock).toHaveBeenCalledWith("/data/agents/agent-1/data", 0o700);
 });
 
 test("worker that can neither own nor chgrp the dir fails the deploy — never widens perms", async () => {

@@ -7,7 +7,7 @@
 //   - DB status is written FIRST, then emitStep — so a reconnecting socket
 //     can backfill the current step from the row (DB = source of truth).
 
-import { mkdir, chown, chmod } from "node:fs/promises";
+import { mkdir, chown, chmod, stat } from "node:fs/promises";
 
 import { prisma } from "./db";
 import { config, paths, HERMES_UID, HERMES_GID } from "./config";
@@ -96,6 +96,16 @@ async function prepareDataDir(dataDir: string, agentId: string): Promise<void> {
     ).catch(() => undefined);
     return;
   }
+
+  // Already secured: the image entrypoint chowns HERMES_HOME to HERMES_UID on
+  // first boot, after which a non-root worker can no longer chown/chgrp the
+  // dir (POSIX chgrp requires ownership) and the tiers below would fail every
+  // redeploy/restart. Container-uid-owned with no world access — and group
+  // access only via HERMES_GID — is at least as tight as either tier's target.
+  const st = await stat(dataDir);
+  const mode = st.mode & 0o777;
+  const groupOk = (mode & 0o070) === 0 || st.gid === HERMES_GID;
+  if (st.uid === HERMES_UID && groupOk && (mode & 0o007) === 0) return;
 
   // Tier 1: root worker — own the dir as the container uid, owner-only perms.
   try {
