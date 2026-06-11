@@ -157,7 +157,12 @@ async function seedConfigYaml(dataDir: string, yaml: string, agentId: string): P
     await stat(configPath);
     return;
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    const code = (e as NodeJS.ErrnoException).code;
+    // EACCES/EPERM: the image entrypoint sealed the dir to the container uid
+    // (0700) on a previous boot, so this is not a fresh dir — the gateway
+    // already owns a config.yaml inside. Seeding is for fresh dirs only.
+    if (code === "EACCES" || code === "EPERM") return;
+    if (code !== "ENOENT") throw e;
   }
 
   await writeFile(configPath, yaml, { mode: 0o660 });

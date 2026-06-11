@@ -271,6 +271,24 @@ test("does not overwrite an existing config.yaml on redeploy", async () => {
   expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
 });
 
+test("skips the seed when the data dir is sealed to the container uid (EACCES)", async () => {
+  // #given a redeploy where the dir is 0700 uid-10000 — the worker cannot stat
+  // inside, which means the gateway already manages its own config.yaml
+  buildAgentConfigYamlMock.mockReturnValue("model:\n  provider: cloudflare\n");
+  statMock.mockImplementation((p: string) =>
+    typeof p === "string" && p.endsWith("config.yaml")
+      ? Promise.reject(Object.assign(new Error("permission denied"), { code: "EACCES" }))
+      : Promise.resolve({ uid: 10000, gid: 10000, mode: 0o40700 }),
+  );
+
+  // #when driven
+  await drive("agent-1");
+
+  // #then nothing is written and the deploy still reaches running
+  expect(writeFileMock).not.toHaveBeenCalled();
+  expect(stepCalls).toContainEqual({ step: "running", state: "ok" });
+});
+
 test("skips the seed entirely when the provider needs no config.yaml", async () => {
   // #given buildAgentConfigYaml returns null (anthropic)
   buildAgentConfigYamlMock.mockReturnValue(null);
