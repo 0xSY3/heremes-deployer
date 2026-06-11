@@ -35,6 +35,29 @@ describe("buildAgentEnv (cloudflare)", () => {
     expect(env.OPENROUTER_API_KEY).toBeUndefined();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
+
+  it("pins HERMES_MODEL to the cloudflare default, not the openrouter default", () => {
+    // #given a cloudflare agent
+    const secret = { API_SERVER_KEY: "k-server", CLOUDFLARE_API_KEY: "cfut-x" };
+
+    // #when building the env
+    const env = buildAgentEnv({ secret, llmProvider: "cloudflare" });
+
+    // #then TUI sessions (which honor HERMES_MODEL) get a @cf/ model the
+    // Workers AI endpoint can serve — a partner-prefixed id would 402
+    expect(env.HERMES_MODEL).toBe("@cf/openai/gpt-oss-120b");
+  });
+
+  it("omits HERMES_MODEL for anthropic (image default is already an Anthropic id)", () => {
+    // #given an anthropic agent
+    const secret = { API_SERVER_KEY: "k-server", ANTHROPIC_API_KEY: "sk-ant-y" };
+
+    // #when building the env
+    const env = buildAgentEnv({ secret, llmProvider: "anthropic" });
+
+    // #then no cross-provider model id is injected
+    expect(env.HERMES_MODEL).toBeUndefined();
+  });
 });
 
 describe("buildAgentConfigYaml", () => {

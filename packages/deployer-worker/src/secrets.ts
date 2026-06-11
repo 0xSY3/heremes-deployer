@@ -211,6 +211,17 @@ export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
     throw new Error("secret is missing API_SERVER_KEY");
   }
 
+  // HERMES_MODEL is ignored by the gateway chat path (config.yaml wins) but
+  // dashboard TUI sessions still honor it — so it MUST match the provider the
+  // seeded config.yaml routes to, or TUI chats send a foreign model id to the
+  // wrong endpoint (e.g. deepseek/* to Workers AI → 402 unified-billing error).
+  const modelEnv =
+    opts.llmProvider === "cloudflare"
+      ? { HERMES_MODEL: cfg.cfDefaultModel }
+      : opts.llmProvider === "openrouter"
+        ? { HERMES_MODEL: cfg.defaultModel }
+        : {}; // anthropic: the image's own Anthropic default is correct
+
   return {
     API_SERVER_KEY: apiServerKey,
     [keyName]: llmKey,
@@ -220,9 +231,7 @@ export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
     // the owner of the host data bind so /opt/data is writable; see lifecycle.
     HERMES_UID: String(HERMES_UID),
     HERMES_GID: String(HERMES_GID),
-    // Pin a model that works with any OpenRouter key; the image default
-    // (minimax) 404s without a data-policy toggle.
-    HERMES_MODEL: cfg.defaultModel,
+    ...modelEnv,
     HERMES_DASHBOARD: "1",
     // Bind to all interfaces inside the container so the published
     // loopback port is reachable; the host binding stays 127.0.0.1.
