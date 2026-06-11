@@ -33,7 +33,7 @@ describe("config defaults", () => {
     expect(config.dockerSocket).toBe("/var/run/docker.sock");
     expect(config.portMin).toBe(13000);
     expect(config.portMax).toBe(14000);
-    expect(config.defaultModel).toBe("google/gemini-2.5-flash");
+    expect(config.defaultModel).toBe("deepseek/deepseek-v4-flash");
     expect(config.wsPort).toBe(7071);
     expect(config.skipCaddy).toBe(false);
     expect(config.keepCrashedContainers).toBe(false);

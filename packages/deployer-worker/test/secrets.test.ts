@@ -117,7 +117,7 @@ describe("buildAgentEnv", () => {
     expect(env.HERMES_DASHBOARD_HOST).toBe("0.0.0.0");
     expect(env.HERMES_DASHBOARD_TUI).toBe("1");
     expect(env.HERMES_DASHBOARD_INSECURE).toBe("1");
-    expect(env.HERMES_MODEL).toBe("google/gemini-2.5-flash");
+    expect(env.HERMES_MODEL).toBe("deepseek/deepseek-v4-flash");
     expect(env.HERMES_EPHEMERAL_SYSTEM_PROMPT).toBeUndefined();
   });
 
@@ -136,7 +136,7 @@ describe("buildAgentEnv", () => {
       personalityId: "coding",
     });
     expect(env.HERMES_EPHEMERAL_SYSTEM_PROMPT).toContain("senior software engineer");
-    expect(env.HERMES_MODEL).toBe("google/gemini-2.5-flash");
+    expect(env.HERMES_MODEL).toBe("deepseek/deepseek-v4-flash");
   });
 
   it("ignores an unknown personalityId (no prompt injected)", () => {

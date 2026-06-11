@@ -132,10 +132,10 @@ export const config = {
   // disables WS auth (verifyToken fails closed) — set it in prod via env.
   wsSecret: optional("DEPLOYER_WS_SECRET", ""),
 
-  // Default LLM model injected as HERMES_MODEL. Works with any OpenRouter key
-  // out of the box, unlike the image default (minimax) which 404s without a
-  // data-policy toggle. A personality preset may override it.
-  defaultModel: optional("DEPLOYER_DEFAULT_MODEL", "google/gemini-2.5-flash"),
+  // Default LLM model injected as HERMES_MODEL. Overrides the image default
+  // (minimax), which 404s without an OpenRouter data-policy toggle. A
+  // personality preset may override it.
+  defaultModel: optional("DEPLOYER_DEFAULT_MODEL", "deepseek/deepseek-v4-flash"),
 };
 
 // Guard against an inverted/empty port range at boot — an allocator over an

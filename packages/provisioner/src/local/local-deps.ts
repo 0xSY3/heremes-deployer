@@ -19,8 +19,8 @@ function personalityEnv(personalityId: string | undefined): Record<string, strin
 
 const HERMES_PORT = 8642;
 const DASHBOARD_PORT = 9119;
-// Works with any OpenRouter key out of the box, unlike the image default (minimax) which 404s without a data-policy toggle.
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+// Overrides the image default (minimax), which 404s without an OpenRouter data-policy toggle.
+const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
 
 // Headless gateway, not the default interactive CLI, which EOFs in a non-TTY container.
 const GATEWAY_COMMAND = ["gateway", "run"];
