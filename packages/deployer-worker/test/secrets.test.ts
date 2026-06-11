@@ -45,7 +45,7 @@ describe("buildAgentEnv (cloudflare)", () => {
 
     // #then TUI sessions (which honor HERMES_MODEL) get a @cf/ model the
     // Workers AI endpoint can serve — a partner-prefixed id would 402
-    expect(env.HERMES_MODEL).toBe("@cf/openai/gpt-oss-120b");
+    expect(env.HERMES_MODEL).toBe("@cf/google/gemma-4-26b-a4b-it");
   });
 
   it("omits HERMES_MODEL for anthropic (image default is already an Anthropic id)", () => {
@@ -74,7 +74,7 @@ describe("buildAgentConfigYaml", () => {
       `base_url: "https://api.cloudflare.com/client/v4/accounts/${"a".repeat(32)}/ai/v1"`,
     );
     expect(yaml).toContain("key_env: CLOUDFLARE_API_KEY");
-    expect(yaml).toContain('default: "@cf/openai/gpt-oss-120b"');
+    expect(yaml).toContain('default: "@cf/google/gemma-4-26b-a4b-it"');
   });
 
   it("throws for cloudflare when CF_ACCOUNT_ID is missing", () => {

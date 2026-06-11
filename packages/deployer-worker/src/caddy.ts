@@ -5,18 +5,51 @@
 // that has an @id-addressable routes array. See infra/Caddyfile.
 
 import { config as cfg } from "./config";
+import { GATE_OPEN_PATH, GATE_CHECK_PATH } from "./dashboard-gate";
+
+// Caddy handlers we emit. Loose enough to cover the rewrite/reverse_proxy
+// proxy chain plus the forward_auth reverse_proxy (which carries header
+// injection + a handle_response branch that lets a 2xx fall through to the
+// next handler while a non-2xx is returned to the client).
+type CaddyHandler =
+  | { handler: "rewrite"; strip_path_prefix: string }
+  | {
+      handler: "reverse_proxy";
+      upstreams: Array<{ dial: string }>;
+      rewrite?: { method?: string; uri?: string };
+      headers?: { request?: { set?: Record<string, string[]> } };
+      handle_response?: Array<{
+        match: { status_code: number[] };
+        routes: Array<{ handle: Array<{ handler: string }> }>;
+      }>;
+    };
 
 interface CaddyRoute {
   "@id": string;
   match: Array<{ host?: string[]; path?: string[] }>;
-  // Two-stage handler: rewrite strips the path prefix so the upstream
-  // (which serves at root) sees the request as if it came in directly,
-  // then reverse_proxy forwards it. Order matters — rewrite must run
-  // before reverse_proxy.
-  handle: Array<
-    | { handler: "rewrite"; strip_path_prefix: string }
-    | { handler: "reverse_proxy"; upstreams: Array<{ dial: string }> }
-  >;
+  handle: CaddyHandler[];
+}
+
+// Caddy forward_auth, hand-authored for the admin API: proxy a GET subrequest
+// to the worker's gate check, injecting the agent id. A 2xx response makes
+// Caddy continue to the NEXT handler (the real container proxy); any non-2xx is
+// returned to the client verbatim, blocking the dashboard. Mirrors the JSON the
+// Caddyfile `forward_auth` directive expands to.
+function forwardAuthHandler(agentId: string): CaddyHandler {
+  return {
+    handler: "reverse_proxy",
+    rewrite: { method: "GET", uri: GATE_CHECK_PATH },
+    headers: { request: { set: { "X-Hermes-Agent": [agentId] } } },
+    upstreams: [{ dial: `127.0.0.1:${cfg.wsPort}` }],
+    handle_response: [{ match: { status_code: [2] }, routes: [{ handle: [{ handler: "headers" }] }] }],
+  };
+}
+
+// The public /__hermes_gate route (token → cookie). Routed to the worker, not
+// the container, and tagged with the agent id so the worker can bind the cookie
+// to this agent. Lives at a separate @id so removeRoute can drop it too.
+function gateRouteId(agentId: string): string {
+  return `${agentId}::gate`;
 }
 
 async function adminFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -143,17 +176,38 @@ export async function addRoute(
   // requests then hit this same host and resolve. Caddy on-demand TLS mints the
   // cert for the new subdomain on first request.
   if (cfg.agentSubdomainBase) {
-    const route: CaddyRoute = {
-      "@id": agentId,
-      match: [{ host: [`${slug}.${cfg.agentSubdomainBase}`] }],
+    const host = `${slug}.${cfg.agentSubdomainBase}`;
+    const containerProxy: CaddyHandler = {
+      handler: "reverse_proxy",
+      upstreams: [{ dial: `127.0.0.1:${dashboardPort}` }],
+    };
+
+    if (!cfg.dashboardAuth) {
+      await prependRoutes([
+        { "@id": agentId, match: [{ host: [host] }], handle: [containerProxy] },
+      ]);
+      return;
+    }
+
+    // Two routes, gate first: the /__hermes_gate exchange must NOT itself be
+    // gated, so it precedes the forward_auth'd container route.
+    const gateRoute: CaddyRoute = {
+      "@id": gateRouteId(agentId),
+      match: [{ host: [host], path: [GATE_OPEN_PATH, `${GATE_OPEN_PATH}/*`] }],
       handle: [
         {
           handler: "reverse_proxy",
-          upstreams: [{ dial: `127.0.0.1:${dashboardPort}` }],
+          headers: { request: { set: { "X-Hermes-Agent": [agentId] } } },
+          upstreams: [{ dial: `127.0.0.1:${cfg.wsPort}` }],
         },
       ],
     };
-    await prependRoute(route);
+    const gatedRoute: CaddyRoute = {
+      "@id": agentId,
+      match: [{ host: [host] }],
+      handle: [forwardAuthHandler(agentId), containerProxy],
+    };
+    await prependRoutes([gateRoute, gatedRoute]);
     return;
   }
 
@@ -174,10 +228,15 @@ export async function addRoute(
       },
     ],
   };
-  await prependRoute(route);
+  await prependRoutes([route]);
 }
 
-async function prependRoute(route: CaddyRoute): Promise<void> {
+// Prepend one or more routes (already in evaluation order) at HEAD, dropping any
+// existing entry that shares an @id with one we're adding so redeploys don't
+// accumulate duplicates. Multiple routes (gate + gated container) are inserted
+// in the given order, ahead of the Caddyfile catch-all that forwards the bare
+// domain to the Next UI (Caddy is first-match-wins).
+async function prependRoutes(toAdd: CaddyRoute[]): Promise<void> {
   const path = `/config/apps/http/servers/${cfg.caddyServerName}/routes`;
 
   const readCurrent = async (): Promise<CaddyRoute[]> => {
@@ -194,13 +253,9 @@ async function prependRoute(route: CaddyRoute): Promise<void> {
     current = await readCurrent();
   }
 
-  // Drop any existing entry with the same @id so redeploys/restarts don't
-  // accumulate duplicates.
-  const deduped = current.filter((r) => r["@id"] !== route["@id"]);
-  // Prepend at HEAD: the Caddyfile catch-all that forwards the bare
-  // domain to the Next UI lives further down; first-match-wins would
-  // otherwise route /<slug>/* to Next instead of the container.
-  const next = [route, ...deduped];
+  const addedIds = new Set(toAdd.map((r) => r["@id"]));
+  const deduped = current.filter((r) => !addedIds.has(r["@id"]));
+  const next = [...toAdd, ...deduped];
 
   // PATCH replaces the value at the path. PUT errors 409 "key already
   // exists" whenever the array is already present (every case but a
@@ -218,13 +273,13 @@ async function prependRoute(route: CaddyRoute): Promise<void> {
 
 export async function removeRoute(agentId: string): Promise<void> {
   if (cfg.skipCaddy) return;
-  const res = await adminFetch(`/id/${agentId}`, { method: "DELETE" });
-  // 404 means the route already went away — idempotent for our use
-  // (reverse-order rollback in §5 may call this after the route is gone).
-  if (!res.ok && res.status !== 404) {
-    throw new Error(
-      `Caddy removeRoute failed: ${res.status} ${await res.text()}`,
-    );
+  // Delete both the container route and the (possibly-absent) gate route. 404 on
+  // either means it already went away — idempotent for the §5 rollback path.
+  for (const id of [agentId, gateRouteId(agentId)]) {
+    const res = await adminFetch(`/id/${id}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`Caddy removeRoute failed: ${res.status} ${await res.text()}`);
+    }
   }
 }
 

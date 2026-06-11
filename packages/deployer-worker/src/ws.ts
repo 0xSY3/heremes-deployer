@@ -9,12 +9,18 @@
 // owner token, and on connect we backfill the step ring + DB status so a
 // reconnect mid-deploy lands on the right checklist step.
 
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { prisma } from "./db";
 import { config } from "./config";
 import { verifyToken } from "./ws-auth";
+import {
+  GATE_OPEN_PATH,
+  GATE_CHECK_PATH,
+  handleGateOpen,
+  handleGateCheck,
+} from "./dashboard-gate";
 import { subscribe, snapshotSteps, type Frame } from "./events";
 
 // The deploy socket sends the events.ts Frame union plus a `hello` handshake
@@ -133,6 +139,33 @@ async function handleSession(ws: WebSocket, agentId: string, token: string): Pro
   });
 }
 
+// Caddy routes /__hermes_* on each agent subdomain to this server and injects
+// the agent id via X-Hermes-Agent. Returns true when the request was a gate
+// request (and a response was written), false to fall through to the WS hint.
+function handleGateHttp(req: IncomingMessage, res: ServerResponse): boolean {
+  const url = new URL(req.url ?? "/", "http://placeholder");
+  const agentId = headerValue(req, "x-hermes-agent");
+
+  if (url.pathname === GATE_OPEN_PATH) {
+    const r = handleGateOpen({ token: url.searchParams.get("token"), agentId });
+    res.writeHead(r.status, r.headers);
+    res.end(r.body);
+    return true;
+  }
+  if (url.pathname === GATE_CHECK_PATH) {
+    const r = handleGateCheck({ cookieHeader: req.headers.cookie, agentId });
+    res.writeHead(r.status, r.headers);
+    res.end(r.body);
+    return true;
+  }
+  return false;
+}
+
+function headerValue(req: IncomingMessage, name: string): string {
+  const v = req.headers[name];
+  return (Array.isArray(v) ? v[0] : v) ?? "";
+}
+
 export interface WsHandle {
   address(): ReturnType<import("node:net").Server["address"]>;
   close(): void;
@@ -145,7 +178,8 @@ export function startWsServer(): Promise<WsHandle | null> {
     return Promise.resolve(null);
   }
 
-  const httpServer = createServer((_req, res) => {
+  const httpServer = createServer((req, res) => {
+    if (handleGateHttp(req, res)) return;
     res.writeHead(426, { "Content-Type": "text/plain" });
     res.end(
       "Upgrade required: connect with ws(s)://<host>/v1/agents/<agentId>/deploy?token=<t>\n",

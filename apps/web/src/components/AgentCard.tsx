@@ -89,13 +89,15 @@ export function AgentCard({
         {running && agent.hostUrl && (
           <div className="flex items-center gap-4 border border-foreground p-4">
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-2 mb-1">Live Dashboard URL</p>
-              <a href={agent.hostUrl} target="_blank" rel="noreferrer" className="block truncate font-mono text-sm text-foreground transition hover:text-accent-bright">
-                {agent.hostUrl}
-              </a>
+              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-2 mb-1">Private Dashboard</p>
+              <p className="block truncate font-mono text-sm text-muted">
+                {agent.hostUrl.replace(/^https?:\/\//, "")}
+              </p>
             </div>
+            {/* Open via the owner-token exchange — the bare URL is gated, so a
+                direct link would 401. /open mints a token and redirects. */}
             <a
-              href={agent.hostUrl}
+              href={`/api/agents/${agent.id}/open`}
               target="_blank"
               rel="noreferrer"
               className="shrink-0 border border-foreground px-5 py-2 text-xs font-mono font-bold uppercase text-foreground transition hover:bg-foreground hover:text-white"

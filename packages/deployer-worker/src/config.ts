@@ -132,6 +132,16 @@ export const config = {
   // disables WS auth (verifyToken fails closed) — set it in prod via env.
   wsSecret: optional("DEPLOYER_WS_SECRET", ""),
 
+  // Gate each agent dashboard behind an owner-only forward_auth check at Caddy:
+  // the agent container runs with HERMES_DASHBOARD_INSECURE=1 (no auth of its
+  // own), so without this the dashboard is reachable by URL alone. Routes pick
+  // this up at deploy time — flip off + re-drive to fall back to open access.
+  dashboardAuth: boolEnv("DEPLOYER_DASHBOARD_AUTH"),
+
+  // Lifetime of the signed dashboard access cookie minted by /__hermes_gate
+  // (the owner re-opens from the web app to refresh it). 8h default.
+  gateCookieTtlSec: numberEnv("DEPLOYER_GATE_COOKIE_TTL_SEC", 28800),
+
   // Default LLM model injected as HERMES_MODEL. Overrides the image default
   // (minimax), which 404s without an OpenRouter data-policy toggle. A
   // personality preset may override it.
@@ -141,7 +151,7 @@ export const config = {
   // a @cf/ model — partner-prefixed ids route to unified billing, which
   // promo credits do not cover. gpt-oss-120b measured fastest with clean
   // (non-reasoning) output of the large chat models (2026-06-11).
-  cfDefaultModel: optional("DEPLOYER_CF_DEFAULT_MODEL", "@cf/openai/gpt-oss-120b"),
+  cfDefaultModel: optional("DEPLOYER_CF_DEFAULT_MODEL", "@cf/google/gemma-4-26b-a4b-it"),
 };
 
 // Guard against an inverted/empty port range at boot — an allocator over an
