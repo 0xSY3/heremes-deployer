@@ -32,6 +32,8 @@ beforeEach(() => {
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe("GET /api/agents/[id]/logs", () => {
+  const ts = new Date("2026-06-12T10:00:00.000Z");
+
   it("404s when the agent is not owned (no existence leak)", async () => {
     // #given the owner-scoped lookup returns nothing
     getCurrentUser.mockResolvedValue({ id: "u1" });
@@ -50,12 +52,22 @@ describe("GET /api/agents/[id]/logs", () => {
     // #given ownership passes and the log query returns newest-first rows
     getCurrentUser.mockResolvedValue({ id: "u1" });
     findFirst.mockResolvedValue({ id: "agent_1" });
-    findMany.mockResolvedValue([{ text: "line 3" }, { text: "line 2" }, { text: "line 1" }]);
+    findMany.mockResolvedValue([
+      { lineNo: 3, text: "line 3", stream: "stdout", ts },
+      { lineNo: 2, text: "line 2", stream: "stderr", ts },
+      { lineNo: 1, text: "line 1", stream: "system", ts },
+    ]);
     // #when reading logs for an owned agent
     const res = await logs.GET(new Request("http://x"), params("agent_1"));
     // #then 200 with the rows reversed into natural reading order
     expect(res.status).toBe(200);
-    expect((await res.json()).logs).toBe("line 1\nline 2\nline 3");
+    const body = await res.json();
+    expect(body.logs).toBe("line 1\nline 2\nline 3");
+    expect(body.entries).toEqual([
+      { lineNo: 1, text: "line 1", stream: "system", ts: "2026-06-12T10:00:00.000Z" },
+      { lineNo: 2, text: "line 2", stream: "stderr", ts: "2026-06-12T10:00:00.000Z" },
+      { lineNo: 3, text: "line 3", stream: "stdout", ts: "2026-06-12T10:00:00.000Z" },
+    ]);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { agentId: "agent_1" } }),
     );

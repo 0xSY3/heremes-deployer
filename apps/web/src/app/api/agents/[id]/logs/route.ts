@@ -18,11 +18,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     where: { agentId: id },
     orderBy: { lineNo: "desc" },
     take: 500,
-    select: { text: true },
+    select: { lineNo: true, text: true, stream: true, ts: true },
   });
-  const logs = rows
-    .reverse()
-    .map((r) => r.text)
-    .join("\n");
-  return NextResponse.json({ logs });
+  const entries = rows.reverse().map((r) => ({
+    lineNo: r.lineNo,
+    text: r.text,
+    stream: r.stream,
+    ts: r.ts.toISOString(),
+  }));
+  const logs = entries.map((r) => r.text).join("\n");
+  return NextResponse.json({ entries, logs });
 }
