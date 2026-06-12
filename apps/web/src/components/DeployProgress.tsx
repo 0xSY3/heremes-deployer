@@ -152,7 +152,7 @@ export function DeployProgress({
 
       {state.status === "running" && state.url && (
         <a
-          href={state.url}
+          href={`/api/agents/${agentId}/open`}
           target="_blank"
           rel="noreferrer"
           className="group relative mt-6 inline-flex h-12 w-full items-center justify-center gap-2 border border-foreground bg-foreground font-mono text-sm font-bold uppercase tracking-widest text-white transition hover:bg-transparent hover:text-foreground"
