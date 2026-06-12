@@ -5,7 +5,7 @@
 // Requires `age` and `age-keygen` on PATH. See infra/install.sh.
 
 import { spawn, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -237,6 +237,15 @@ export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
     // loopback port is reachable; the host binding stays 127.0.0.1.
     HERMES_DASHBOARD_HOST: "0.0.0.0",
     HERMES_DASHBOARD_TUI: "1",
+    // Pin the dashboard's WS session token so it survives a dashboard restart.
+    // Unset, the image regenerates it on every (s6-supervised) restart, which
+    // invalidates the token already embedded in the open SPA → the chat/event
+    // WebSockets close with 1006 ("session ended"). Derived from API_SERVER_KEY
+    // (not equal to it: the token is injected into the page HTML, so reusing the
+    // API key verbatim would leak it). Stable across redeploys since the key is.
+    HERMES_DASHBOARD_SESSION_TOKEN: createHash("sha256")
+      .update(`${apiServerKey}:dashboard-ws`)
+      .digest("hex"),
     // Without an allowlist the gateway denies "unauthorized" users, which kills
     // dashboard chat sessions ("session ended"). Open access is safe here: the
     // dashboard is already owner-gated at Caddy (forward_auth), so the gateway

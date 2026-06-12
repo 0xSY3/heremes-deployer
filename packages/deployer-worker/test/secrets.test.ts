@@ -190,6 +190,10 @@ describe("buildAgentEnv", () => {
     expect(env.API_SERVER_ENABLED).toBe("true");
     expect(env.API_SERVER_HOST).toBe("0.0.0.0");
     expect(env.GATEWAY_ALLOW_ALL_USERS).toBe("true");
+    // Pinned (not random, not equal to the API key which would leak via the
+    // injected page) so the dashboard WS token survives a restart.
+    expect(env.HERMES_DASHBOARD_SESSION_TOKEN).toMatch(/^[a-f0-9]{64}$/);
+    expect(env.HERMES_DASHBOARD_SESSION_TOKEN).not.toBe("k-server");
     expect(env.HERMES_UID).toBe("10000");
     expect(env.HERMES_GID).toBe("10000");
     expect(env.HERMES_DASHBOARD).toBe("1");

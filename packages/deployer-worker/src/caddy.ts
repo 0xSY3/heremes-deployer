@@ -52,6 +52,20 @@ function gateRouteId(agentId: string): string {
   return `${agentId}::gate`;
 }
 
+function wsRouteId(agentId: string): string {
+  return `${agentId}::ws`;
+}
+
+// The dashboard's WebSocket + event-stream endpoints. forward_auth strips the
+// `Upgrade`/`Connection` headers, so a gated WS upgrade arrives at the dashboard
+// as a plain GET → 401 → the browser sees "session ended (1006)" and a dead
+// event feed. These must bypass forward_auth and proxy straight through (Caddy
+// reverse_proxy preserves the upgrade). They are NOT unprotected: each requires
+// the dashboard's per-process session token (`?token=`), which is injected only
+// into the index page — and that page IS behind the gate, so only the owner
+// ever receives the token.
+const DASHBOARD_WS_PATHS = ["/api/ws", "/api/pub", "/api/pty", "/api/events"];
+
 async function adminFetch(path: string, init?: RequestInit): Promise<Response> {
   // Caddy's admin API rejects requests whose Origin header isn't on the
   // configured allowlist. Node's fetch doesn't set Origin by default, so
@@ -202,12 +216,19 @@ export async function addRoute(
         },
       ],
     };
+    // WebSocket/event paths proxy straight to the dashboard (no forward_auth)
+    // so the upgrade survives; ordered before the gated catch-all.
+    const wsRoute: CaddyRoute = {
+      "@id": wsRouteId(agentId),
+      match: [{ host: [host], path: DASHBOARD_WS_PATHS }],
+      handle: [containerProxy],
+    };
     const gatedRoute: CaddyRoute = {
       "@id": agentId,
       match: [{ host: [host] }],
       handle: [forwardAuthHandler(agentId), containerProxy],
     };
-    await prependRoutes([gateRoute, gatedRoute]);
+    await prependRoutes([gateRoute, wsRoute, gatedRoute]);
     return;
   }
 
@@ -273,9 +294,9 @@ async function prependRoutes(toAdd: CaddyRoute[]): Promise<void> {
 
 export async function removeRoute(agentId: string): Promise<void> {
   if (cfg.skipCaddy) return;
-  // Delete both the container route and the (possibly-absent) gate route. 404 on
-  // either means it already went away — idempotent for the §5 rollback path.
-  for (const id of [agentId, gateRouteId(agentId)]) {
+  // Delete the container route plus the (possibly-absent) gate + ws routes. 404
+  // on any means it already went away — idempotent for the §5 rollback path.
+  for (const id of [agentId, gateRouteId(agentId), wsRouteId(agentId)]) {
     const res = await adminFetch(`/id/${id}`, { method: "DELETE" });
     if (!res.ok && res.status !== 404) {
       throw new Error(`Caddy removeRoute failed: ${res.status} ${await res.text()}`);
