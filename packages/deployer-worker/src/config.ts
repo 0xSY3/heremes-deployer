@@ -151,7 +151,7 @@ export const config = {
   // a @cf/ model — partner-prefixed ids route to unified billing, which
   // promo credits do not cover. gpt-oss-120b measured fastest with clean
   // (non-reasoning) output of the large chat models (2026-06-11).
-  cfDefaultModel: optional("DEPLOYER_CF_DEFAULT_MODEL", "@cf/google/gemma-4-26b-a4b-it"),
+  cfDefaultModel: optional("DEPLOYER_CF_DEFAULT_MODEL", "@cf/openai/gpt-oss-120b"),
 };
 
 // Guard against an inverted/empty port range at boot — an allocator over an
