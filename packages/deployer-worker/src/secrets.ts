@@ -237,6 +237,11 @@ export function buildAgentEnv(opts: BuildAgentEnvOpts): Record<string, string> {
     // loopback port is reachable; the host binding stays 127.0.0.1.
     HERMES_DASHBOARD_HOST: "0.0.0.0",
     HERMES_DASHBOARD_TUI: "1",
+    // Without an allowlist the gateway denies "unauthorized" users, which kills
+    // dashboard chat sessions ("session ended"). Open access is safe here: the
+    // dashboard is already owner-gated at Caddy (forward_auth), so the gateway
+    // is not the trust boundary. Without this, the web dashboard cannot chat.
+    GATEWAY_ALLOW_ALL_USERS: "true",
     // Dashboard's own OAuth is skipped; auth is enforced at Caddy (§5).
     HERMES_DASHBOARD_INSECURE: "1",
     // Spread last so a preset model override wins over the default.
