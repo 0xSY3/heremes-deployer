@@ -14,7 +14,7 @@ import { prisma } from "../src/db";
 import { drive } from "../src/lifecycle";
 import { watchCrashes } from "../src/crash";
 import { stopAndRemove } from "../src/docker";
-import { ensureServer, removeRoute } from "../src/caddy";
+import { ensureServer, addRoute, removeRoute } from "../src/caddy";
 import { releasePort } from "../src/ports";
 import { appendSystemLog, stopTailer, startTailer } from "../src/logs";
 import { startRetentionLoop } from "../src/retention";
@@ -170,12 +170,36 @@ export async function resumeTailers(): Promise<void> {
   }
 }
 
+export async function reconcileRoutes(): Promise<void> {
+  // After a host reboot, Caddy reloads the static Caddyfile and drops every
+  // per-agent route the worker injected via the admin API (those routes live
+  // only in Caddy's runtime config, never in the Caddyfile). Without this,
+  // running agents silently TLS-fail / 404 until their next redeploy. Re-add a
+  // route for each running agent at startup. Idempotent: addRoute dedupes by @id.
+  const running = await prisma.agent.findMany({
+    where: { status: "running", containerId: { not: null }, dashboardPort: { not: null } },
+    select: { id: true, slug: true, dashboardPort: true },
+  });
+  let n = 0;
+  for (const r of running) {
+    if (r.dashboardPort == null) continue;
+    try {
+      await addRoute(r.id, r.slug, r.dashboardPort);
+      n++;
+    } catch (e) {
+      console.error(`[worker] reconcile route ${r.slug}:`, e);
+    }
+  }
+  console.log(`[worker] reconciled ${n} agent route(s) at startup`);
+}
+
 export async function main(): Promise<void> {
   console.log("[worker] starting");
   // Bootstrap Caddy once so the first addRoute doesn't 500 on "final
   // element is not an array". Non-fatal: keep the worker alive so each
   // deploy surfaces a clean FAILED instead of crashing the process.
   await ensureServer().catch((e) => console.error("[worker] ensureServer failed at startup:", e));
+  await reconcileRoutes().catch((e) => console.error("[worker] reconcileRoutes failed at startup:", e));
   await resumeTailers();
   watchCrashes().catch((e) => console.error("[worker] crash watcher died:", e));
   startRetentionLoop();

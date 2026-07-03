@@ -23,7 +23,8 @@ datasource db {
 
 model Agent {
   id            String   @id @default(cuid())
-  userId        String                          // owner (Auth.js user id)
+  userId        String                          // owner (Auth.js session id — opaque, can churn on auth/DB rebuild)
+  ownerEmail    String?                         // stable owner identity; survives userId churn (see apps/web lib/ownership.ts)
   name          String
   slug          String   @unique                // slugify(name) + suffix
   tenantId      String   @unique                // `${userId}-${name}` (current convention)
@@ -52,6 +53,7 @@ model Agent {
 
   logs   AgentLog[]
   @@index([userId])
+  @@index([ownerEmail])
   @@index([status])
   @@index([createdAt])
 }
