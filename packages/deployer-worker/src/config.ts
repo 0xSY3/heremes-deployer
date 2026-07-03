@@ -149,9 +149,12 @@ export const config = {
 
   // Default model for agents on the cloudflare provider (Workers AI). Must be
   // a @cf/ model — partner-prefixed ids route to unified billing, which
-  // promo credits do not cover. gpt-oss-120b measured fastest with clean
-  // (non-reasoning) output of the large chat models (2026-06-11).
-  cfDefaultModel: optional("DEPLOYER_CF_DEFAULT_MODEL", "@cf/openai/gpt-oss-120b"),
+  // promo credits do not cover. llama-3.3-70b-fp8-fast: strong instruct model,
+  // fp8 "fast" variant, clean (non-reasoning) output (2026-07-03).
+  cfDefaultModel: optional(
+    "DEPLOYER_CF_DEFAULT_MODEL",
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  ),
 };
 
 // Guard against an inverted/empty port range at boot — an allocator over an
