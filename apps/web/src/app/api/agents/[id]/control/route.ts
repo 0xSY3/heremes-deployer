@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ownerWhere, healOwnership } from "@/lib/ownership";
 
 export const runtime = "nodejs";
 
@@ -26,8 +27,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "action must be start, stop, or restart" }, { status: 400 });
   }
 
-  const agent = await prisma.agent.findFirst({ where: { id, userId: user.id }, select: { id: true } });
+  const agent = await prisma.agent.findFirst({
+    where: { id, ...ownerWhere(user) },
+    select: { id: true, userId: true },
+  });
   if (!agent) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (agent.userId !== user.id) await healOwnership(user, agent.id);
 
   const action = body.action as Action;
   const updated = await prisma.agent.update({
