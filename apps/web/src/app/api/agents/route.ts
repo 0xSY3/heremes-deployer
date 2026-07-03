@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { createAgentSchema } from "@/lib/validation";
 import { uniqueSlug } from "@/lib/slug";
 import { prisma } from "@/lib/db";
+import { ownerWhere, healStale } from "@/lib/ownership";
 import { writeSecret, generateApiKey } from "@/lib/secrets";
 import { mintWsToken } from "@/lib/ws-token";
 
@@ -23,11 +24,12 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const agents = await prisma.agent.findMany({
-    where: { userId: user.id },
+  const rows = await prisma.agent.findMany({
+    where: ownerWhere(user),
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
+      userId: true,
       name: true,
       slug: true,
       status: true,
@@ -36,6 +38,17 @@ export async function GET() {
       createdAt: true,
     },
   });
+  await healStale(user, rows);
+  // Re-shape without the internal userId — the client never needs it.
+  const agents = rows.map((a) => ({
+    id: a.id,
+    name: a.name,
+    slug: a.slug,
+    status: a.status,
+    hostUrl: a.hostUrl,
+    personalityId: a.personalityId,
+    createdAt: a.createdAt,
+  }));
   return NextResponse.json({ agents });
 }
 
@@ -60,6 +73,9 @@ export async function POST(req: Request) {
     const agent = await prisma.agent.create({
       data: {
         userId: user.id,
+        // Anchor ownership on the stable email too, so this agent survives any
+        // future session-id churn (see lib/ownership.ts).
+        ownerEmail: user.email || null,
         name: body.name,
         slug,
         tenantId,

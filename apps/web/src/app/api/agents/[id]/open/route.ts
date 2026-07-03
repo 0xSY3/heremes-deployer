@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ownerWhere, healOwnership } from "@/lib/ownership";
 import { mintWsToken } from "@/lib/ws-token";
 
 // crypto (HMAC) needs the Node runtime, not edge.
@@ -24,10 +25,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
 
   const agent = await prisma.agent.findFirst({
-    where: { id, userId: user.id },
-    select: { id: true, hostUrl: true, status: true },
+    where: { id, ...ownerWhere(user) },
+    select: { id: true, userId: true, hostUrl: true, status: true },
   });
   if (!agent) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (agent.userId !== user.id) await healOwnership(user, agent.id);
   if (!agent.hostUrl) {
     return NextResponse.json({ error: "agent has no dashboard yet" }, { status: 409 });
   }
